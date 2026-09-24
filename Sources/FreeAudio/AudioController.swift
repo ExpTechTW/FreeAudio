@@ -76,7 +76,10 @@ final class AudioController: ObservableObject {
     private var pendingDefaults: [DeviceDirection: String] = [:]
     private var pendingLevels: Set<String> = []
     private let launchDate = Date()
-    private var muteCheck: Task<Void, Never>?
+    /// Listeners on every held microphone (see `MicrophoneHold`), and when FreeAudio last muted each one again.
+    private var muteGuards: [AudioDeviceID: [PropertyListener]] = [:]
+    private var reMutes: [String: [Date]] = [:]
+    private var holdRetry: Task<Void, Never>?
     /// Bluetooth devices can take a while to connect after login.
     private static let restoreWindow: TimeInterval = 120
     private var lastVolumeWrite: [DeviceDirection: Date] = [:]
@@ -195,9 +198,10 @@ final class AudioController: ObservableObject {
         if direction == .output { outputVolume = volume } else { inputVolume = volume }
         lastVolumeWrite[direction] = Date()
         AudioDevices.setVolume(volume, device.id, direction)
-        // Like the system controls, moving the slider un-mutes.
+        // Like the system controls, moving the slider un-mutes, at the level it was moved to.
         if volume > 0, direction == .output ? outputMuted : inputMuted {
             softMuteVolumes[device.uid] = nil
+            if direction == .input { state.parkedMicrophones[device.uid] = nil }
             setMuted(false, direction)
         }
     }
@@ -208,7 +212,9 @@ final class AudioController: ObservableObject {
 
     private func setMuted(_ muted: Bool, _ direction: DeviceDirection) {
         guard let device = direction == .output ? defaultOutput : defaultInput else { return }
-        if AudioDevices.canMute(device.id, direction) {
+        if direction == .input {
+            setMicrophoneMuted(muted, device)
+        } else if AudioDevices.canMute(device.id, direction) {
             AudioDevices.setMuted(muted, device.id, direction)
         } else if muted {
             // Devices without a mute control are muted by parking the volume at zero.
@@ -217,16 +223,16 @@ final class AudioController: ObservableObject {
         } else if let volume = softMuteVolumes.removeValue(forKey: device.uid) {
             AudioDevices.setVolume(volume, device.id, direction)
         }
-        // Muting in FreeAudio is the user's choice, even while the speech service is listening.
-        muteCheck?.cancel()
-        recordMute(muted, device, direction)
         refreshVolumes()
     }
 
     func refreshDevices() {
         let outputs = AudioDevices.list(.output)
         let inputs = AudioDevices.list(.input)
-        if engineEnabled { quietNewDevices(outputs: outputs, inputs: inputs) }
+        if engineEnabled {
+            takeOverMicrophoneMutes(inputs)
+            quietNewDevices(outputs: outputs, inputs: inputs)
+        }
         if outputs != outputDevices { outputDevices = outputs }
         if inputs != inputDevices { inputDevices = inputs }
         restoreRememberedSound()
@@ -261,6 +267,8 @@ final class AudioController: ObservableObject {
             blockedDevices[direction] = nil
         }
         for id in state.apps.keys { configureAppControl(id) }
+        installMuteGuards()
+        holdMicrophoneMutes()
         refreshVolumes()
         installVolumeListeners()
         reconcileRoutes()
@@ -358,8 +366,14 @@ final class AudioController: ObservableObject {
         for (direction, devices) in [(DeviceDirection.output, outputs), (.input, inputs)] {
             for device in devices {
                 guard known.insert(levelKey(device, direction)).inserted, !seeding, state.newDevicesSilent else { continue }
-                if AudioDevices.canSetVolume(device.id, direction) { AudioDevices.setVolume(0, device.id, direction) }
-                if AudioDevices.canMute(device.id, direction) { AudioDevices.setMuted(true, device.id, direction) }
+                let canSetVolume = AudioDevices.canSetVolume(device.id, direction), canMute = AudioDevices.canMute(device.id, direction)
+                if canSetVolume { AudioDevices.setVolume(0, device.id, direction) }
+                if canMute { AudioDevices.setMuted(true, device.id, direction) }
+                // A new microphone stays muted until it's unmuted in FreeAudio.
+                if direction == .input, canMute || canSetVolume {
+                    state.mutedMicrophones = ((state.mutedMicrophones ?? []) + [device.uid]).sorted()
+                    if !canMute { state.parkedMicrophones[device.uid] = 0 }
+                }
             }
         }
         guard seeding || known.count != before else { return }
@@ -448,9 +462,11 @@ final class AudioController: ObservableObject {
             let uid = String(key.dropFirst(prefix.count))
             // A device that's gone is put back when it returns.
             guard let device = devices.first(where: { $0.uid == uid }) else { continue }
+            // A microphone muted in FreeAudio stays muted.
+            let held = direction == .input && isHeld(device)
             if AudioDevices.canMute(device.id, direction) {
-                AudioDevices.setMuted(original.muted, device.id, direction)
-            } else if AudioDevices.canSetVolume(device.id, direction) {
+                AudioDevices.setMuted(original.muted || held, device.id, direction)
+            } else if AudioDevices.canSetVolume(device.id, direction), !held {
                 AudioDevices.setVolume(original.volume, device.id, direction)
             }
             state.silencedLevels[key] = nil
@@ -459,6 +475,95 @@ final class AudioController: ObservableObject {
         if direction == .output {
             silencers.values.forEach { $0.stop() }
             silencers.removeAll()
+        }
+    }
+
+    // MARK: - Microphone mute
+
+    private func isHeld(_ device: AudioDevice) -> Bool { state.mutedMicrophones?.contains(device.uid) == true }
+
+    /// The first time this version runs, the microphones muted now, or saved as muted, count as muted in FreeAudio.
+    private func takeOverMicrophoneMutes(_ inputs: [AudioDevice]) {
+        guard state.mutedMicrophones == nil else { return }
+        let saved = state.deviceLevels.compactMap { key, level in
+            level.muted && key.hasPrefix("input:") ? String(key.dropFirst("input:".count)) : nil
+        }
+        let mutedNow = inputs.filter { AudioDevices.canMute($0.id, .input) && AudioDevices.isMuted($0.id, .input) }.map(\.uid)
+        state.mutedMicrophones = Set(saved + mutedNow).sorted()
+        scheduleSave()
+    }
+
+    /// Unmuting here is the only way a microphone muted in FreeAudio opens again.
+    private func setMicrophoneMuted(_ muted: Bool, _ device: AudioDevice) {
+        let canMute = AudioDevices.canMute(device.id, .input)
+        var microphones = Set(state.mutedMicrophones ?? [])
+        if muted {
+            guard canMute || AudioDevices.canSetVolume(device.id, .input) else { return }
+            microphones.insert(device.uid)
+            if canMute { AudioDevices.setMuted(true, device.id, .input) } else { park(device) }
+        } else {
+            microphones.remove(device.uid)
+            reMutes[device.uid] = nil
+            if canMute { AudioDevices.setMuted(false, device.id, .input) }
+            if let volume = state.parkedMicrophones.removeValue(forKey: device.uid) {
+                AudioDevices.setVolume(volume, device.id, .input)
+            }
+        }
+        state.mutedMicrophones = microphones.sorted()
+        scheduleSave()
+        installMuteGuards()
+    }
+
+    /// Holds a microphone's volume at zero, keeping the level to give back when it's unmuted in FreeAudio.
+    private func park(_ device: AudioDevice) {
+        if state.parkedMicrophones[device.uid] == nil {
+            state.parkedMicrophones[device.uid] = AudioDevices.volume(device.id, .input) ?? 1
+            scheduleSave()
+        }
+        if (AudioDevices.volume(device.id, .input) ?? 0) > 0 { AudioDevices.setVolume(0, device.id, .input) }
+    }
+
+    /// Watches every held microphone, not only the default one: an app can record from any of them.
+    private func installMuteGuards() {
+        guard engineEnabled else { return }
+        let ids = Set(inputDevices.filter(isHeld).map(\.id))
+        guard ids != Set(muteGuards.keys) else { return }
+        muteGuards = muteGuards.filter { ids.contains($0.key) }
+        for id in ids where muteGuards[id] == nil {
+            muteGuards[id] = AudioDevices.observedAddresses(.input).compactMap {
+                PropertyListener(id, $0) { [weak self] in self?.holdMicrophoneMutes() }
+            }
+        }
+    }
+
+    /// Mutes again every held microphone something else unmuted; see `MicrophoneHold`.
+    private func holdMicrophoneMutes() {
+        guard engineEnabled else { return }
+        let now = Date()
+        for device in inputDevices where isHeld(device) {
+            if state.parkedMicrophones[device.uid] != nil { park(device) }
+            guard AudioDevices.canMute(device.id, .input) else { continue }
+            let recent = reMutes[device.uid] ?? []
+            let step = MicrophoneHold.step(muted: AudioDevices.isMuted(device.id, .input), recentMutes: recent, now: now)
+            switch step {
+            case .keep:
+                continue
+            case .retry(let delay):
+                retryHold(after: delay)
+            case .mute, .muteAndPark:
+                AudioDevices.setMuted(true, device.id, .input)
+                reMutes[device.uid] = MicrophoneHold.recording(now, after: recent)
+                if step == .muteAndPark, AudioDevices.canSetVolume(device.id, .input) { park(device) }
+            }
+        }
+    }
+
+    private func retryHold(after delay: TimeInterval) {
+        guard holdRetry == nil else { return }
+        holdRetry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            self?.holdRetry = nil
+            self?.holdMicrophoneMutes()
         }
     }
 
@@ -552,8 +657,10 @@ final class AudioController: ObservableObject {
             for device in devices {
                 let key = levelKey(device, direction)
                 guard pendingLevels.remove(key) != nil, let level = state.deviceLevels[key] else { continue }
-                if AudioDevices.canSetVolume(device.id, direction) { AudioDevices.setVolume(level.volume, device.id, direction) }
-                if AudioDevices.canMute(device.id, direction) { AudioDevices.setMuted(level.muted, device.id, direction) }
+                // Microphone mutes are held rather than restored: FreeAudio never unmutes one by itself.
+                let parked = direction == .input && state.parkedMicrophones[device.uid] != nil
+                if AudioDevices.canSetVolume(device.id, direction), !parked { AudioDevices.setVolume(level.volume, device.id, direction) }
+                if direction == .output, AudioDevices.canMute(device.id, direction) { AudioDevices.setMuted(level.muted, device.id, direction) }
             }
         }
     }
@@ -577,41 +684,13 @@ final class AudioController: ObservableObject {
         guard state.remembersSound, let device else { return }
         let key = levelKey(device, direction)
         guard !pendingLevels.contains(key) else { return }
-        var level = DeviceLevel(volume: volume, muted: muted)
-        if direction == .input, let saved = state.deviceLevels[key], saved.muted != muted {
-            // Wait before believing a microphone mute change; see `settleMicrophoneMute`.
-            level.muted = saved.muted
-            settleMicrophoneMute(device)
-        }
+        // A microphone is muted when FreeAudio holds it; what macOS briefly does to it isn't a setting.
+        let level = direction == .input
+            ? DeviceLevel(volume: state.parkedMicrophones[device.uid] ?? volume, muted: isHeld(device))
+            : DeviceLevel(volume: volume, muted: muted)
         guard state.deviceLevels[key] != level else { return }
         state.deviceLevels[key] = level
         scheduleSave()
-    }
-
-    /// macOS's speech service unmutes the microphone while it listens during playback and mutes it again
-    /// afterwards. That isn't the user's choice, so a mute change only counts once the service is idle.
-    private func settleMicrophoneMute(_ device: AudioDevice) {
-        muteCheck?.cancel()
-        muteCheck = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(2))
-            guard let self, !Task.isCancelled, !Self.systemIsListening else { return }
-            recordMute(AudioDevices.isMuted(device.id, .input), device, .input)
-        }
-    }
-
-    private func recordMute(_ muted: Bool, _ device: AudioDevice, _ direction: DeviceDirection) {
-        let key = levelKey(device, direction)
-        guard state.remembersSound, var level = state.deviceLevels[key], level.muted != muted else { return }
-        level.muted = muted
-        state.deviceLevels[key] = level
-        scheduleSave()
-    }
-
-    private static var systemIsListening: Bool {
-        CA.array(CA.system, CA.address(kAudioHardwarePropertyProcessObjectList), as: AudioObjectID.self).contains { process in
-            CA.value(process, CA.address(kAudioProcessPropertyIsRunningInput), fallback: UInt32(0)) != 0
-                && CA.string(process, CA.address(kAudioProcessPropertyBundleID)) == "com.apple.CoreSpeech"
-        }
     }
 
     private func levelKey(_ device: AudioDevice, _ direction: DeviceDirection) -> String { "\(direction.key):\(device.uid)" }
@@ -647,6 +726,11 @@ final class AudioController: ObservableObject {
     }
 
     private func muteState(_ device: AudioDevice, _ direction: DeviceDirection) -> Bool {
+        if direction == .input {
+            if AudioDevices.canMute(device.id, .input), AudioDevices.isMuted(device.id, .input) { return true }
+            // Held at zero volume: it has no mute control, or something kept unmuting it.
+            return isHeld(device) && state.parkedMicrophones[device.uid] != nil && (AudioDevices.volume(device.id, .input) ?? 1) == 0
+        }
         if AudioDevices.canMute(device.id, direction) { return AudioDevices.isMuted(device.id, direction) }
         if softMuteVolumes[device.uid] != nil, (AudioDevices.volume(device.id, direction) ?? 0) > 0 {
             softMuteVolumes[device.uid] = nil
@@ -678,7 +762,11 @@ final class AudioController: ObservableObject {
         volumeListeners = devices.flatMap { device, direction -> [PropertyListener] in
             guard let device else { return [] }
             return AudioDevices.observedAddresses(direction).compactMap {
-                PropertyListener(device.id, $0) { [weak self] in self?.refreshVolumes() }
+                PropertyListener(device.id, $0) { [weak self] in
+                    // A held microphone is muted again first, so the panel never shows it open.
+                    if direction == .input { self?.holdMicrophoneMutes() }
+                    self?.refreshVolumes()
+                }
             }
         }
     }
@@ -873,6 +961,8 @@ final class AudioController: ObservableObject {
     private func tick() {
         let now = Date()
         if now.timeIntervalSince(lastPermissionCheck) > (permission == .authorized ? 30 : 2) { refreshPermission() }
+        // In case a change came without a notification.
+        holdMicrophoneMutes()
         scanProcesses()
         var stalled = false
         for (key, route) in routes {

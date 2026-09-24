@@ -170,6 +170,11 @@ struct PersistedState: Codable, Equatable {
     var preferredDevices: [String: String] = [:]
     /// Volume and mute per device, keyed "output:<uid>" or "input:<uid>".
     var deviceLevels: [String: DeviceLevel] = [:]
+    /// Microphones muted in FreeAudio, by UID; they stay muted until they're unmuted in FreeAudio (`MicrophoneHold`).
+    /// `nil` until the first launch takes over the mutes already in place.
+    var mutedMicrophones: [String]?
+    /// Volumes to give back when a microphone held at zero is unmuted in FreeAudio, by UID.
+    var parkedMicrophones: [String: Double] = [:]
     var perAppEnabled = true
     var globalMultiOutput = false
     var globalOutputUIDs: [String] = []
@@ -193,6 +198,8 @@ struct PersistedState: Codable, Equatable {
         silencedLevels = try container.decodeIfPresent([String: DeviceLevel].self, forKey: .silencedLevels) ?? [:]
         preferredDevices = try container.decodeIfPresent([String: String].self, forKey: .preferredDevices) ?? [:]
         deviceLevels = try container.decodeIfPresent([String: DeviceLevel].self, forKey: .deviceLevels) ?? [:]
+        mutedMicrophones = try container.decodeIfPresent([String].self, forKey: .mutedMicrophones)
+        parkedMicrophones = try container.decodeIfPresent([String: Double].self, forKey: .parkedMicrophones) ?? [:]
         perAppEnabled = try container.decodeIfPresent(Bool.self, forKey: .perAppEnabled) ?? true
         globalMultiOutput = try container.decodeIfPresent(Bool.self, forKey: .globalMultiOutput) ?? false
         globalOutputUIDs = try container.decodeIfPresent([String].self, forKey: .globalOutputUIDs) ?? []
