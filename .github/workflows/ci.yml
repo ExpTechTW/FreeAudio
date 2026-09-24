@@ -27,3 +27,9 @@ jobs:
             exit 1
           fi
           scripts/check-commits.sh "$BASE_SHA..$HEAD_SHA"
+
+  test:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - run: swift test
