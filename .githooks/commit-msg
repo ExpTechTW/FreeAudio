@@ -1,0 +1,4 @@
+#!/bin/sh
+# Checks a commit message before git records it; once pushed, a message can only be fixed by rewriting history.
+# Turn on with:  git config core.hooksPath .githooks
+exec "$(git rev-parse --show-toplevel)/scripts/check-commits.sh" --message "$1"
