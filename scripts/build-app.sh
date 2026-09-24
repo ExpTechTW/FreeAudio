@@ -5,6 +5,7 @@
 #   CONFIG=debug scripts/build-app.sh
 #   SIGN_IDENTITY=- scripts/build-app.sh   ad-hoc signature (macOS asks for audio permission again after every build,
 #                                          and the app can't check updates against its developer)
+#   ARCHIVE=1 scripts/build-app.sh    also zip it as build/FreeAudio-<label>.zip, the file a GitHub release carries
 #
 # The version comes from scripts/version.sh; FREEAUDIO_LABEL/_TRAIN/_CODE/_DATE/_PRERELEASE override it (CI passes the
 # values it has checked). Without git history the build is `dev`, build 0.
@@ -81,3 +82,10 @@ fi
 codesign --force --sign "$IDENTITY" --timestamp=none "$APP"
 codesign --verify --strict "$APP"
 echo "Built $APP ($LABEL, $TRAIN build $CODE, $CONFIG, ${ARCHS[*]}, signed with: $IDENTITY)"
+
+if [[ -n ${ARCHIVE:-} ]]; then
+    ZIP=build/FreeAudio-$LABEL.zip
+    rm -f "$ZIP"
+    ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+    echo "Archived $ZIP"
+fi
