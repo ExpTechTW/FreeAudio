@@ -9,6 +9,7 @@ struct FreeAudioApp: App {
             TrayView()
                 .environmentObject(appDelegate.audio)
                 .environmentObject(appDelegate.language)
+                .environmentObject(appDelegate.updater)
         } label: {
             MenuBarLabel(audio: appDelegate.audio)
         }
@@ -19,18 +20,28 @@ struct FreeAudioApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let language = LanguageSettings()
-    private(set) lazy var audio = AudioController()
+    let updater = Updater()
+    private(set) lazy var audio = AudioController(engineEnabled: Self.audioEnabled)
+
+    #if DEBUG
+    /// `defaults write <bundle id> DebugNoAudio -bool true` runs a copy that leaves devices and apps alone, e.g. to
+    /// try an update next to the copy in use.
+    private static let audioEnabled = !UserDefaults.standard.bool(forKey: "DebugNoAudio")
+    #else
+    private static let audioEnabled = true
+    #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Menu bar only, also when started without the app bundle (e.g. `swift run`).
         NSApp.setActivationPolicy(.accessory)
         _ = audio
+        updater.start()
     }
 
     /// Opening FreeAudio again (Finder, Spotlight, Launchpad) shows Settings; that also helps when the
     /// menu bar icon is hidden.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        SettingsWindow.shared.show(audio: audio, language: language)
+        SettingsWindow.shared.show(audio: audio, language: language, updater: updater)
         return false
     }
 }

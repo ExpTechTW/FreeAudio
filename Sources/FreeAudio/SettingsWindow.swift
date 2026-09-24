@@ -11,8 +11,8 @@ final class SettingsWindow {
     private var window: NSWindow?
     private var titleUpdates: AnyCancellable?
 
-    func show(audio: AudioController, language: LanguageSettings) {
-        let window = self.window ?? makeWindow(audio: audio, language: language)
+    func show(audio: AudioController, language: LanguageSettings, updater: Updater) {
+        let window = self.window ?? makeWindow(audio: audio, language: language, updater: updater)
         self.window = window
         if !window.isVisible { window.center() }
         NSApp.activate()
@@ -21,8 +21,8 @@ final class SettingsWindow {
         window.orderFrontRegardless()
     }
 
-    private func makeWindow(audio: AudioController, language: LanguageSettings) -> NSWindow {
-        let controller = NSHostingController(rootView: SettingsRoot(audio: audio, language: language))
+    private func makeWindow(audio: AudioController, language: LanguageSettings, updater: Updater) -> NSWindow {
+        let controller = NSHostingController(rootView: SettingsRoot(audio: audio, language: language, updater: updater))
         controller.sizingOptions = []
         let window = NSWindow(contentViewController: controller)
         window.styleMask = [.titled, .closable]
@@ -42,11 +42,13 @@ final class SettingsWindow {
 private struct SettingsRoot: View {
     @ObservedObject var audio: AudioController
     @ObservedObject var language: LanguageSettings
+    let updater: Updater
 
     var body: some View {
         SettingsView()
             .environmentObject(audio)
             .environmentObject(language)
+            .environmentObject(updater)
             .environment(\.locale, language.language.locale)
     }
 }

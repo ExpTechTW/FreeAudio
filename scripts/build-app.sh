@@ -3,7 +3,8 @@
 #
 #   scripts/build-app.sh              release build, signed with your Apple Development certificate if you have one
 #   CONFIG=debug scripts/build-app.sh
-#   SIGN_IDENTITY=- scripts/build-app.sh   ad-hoc signature (macOS asks for audio permission again after every build)
+#   SIGN_IDENTITY=- scripts/build-app.sh   ad-hoc signature (macOS asks for audio permission again after every build,
+#                                          and the app can't check updates against its developer)
 #
 # The version comes from scripts/version.sh; FREEAUDIO_LABEL/_TRAIN/_CODE/_DATE/_PRERELEASE override it (CI passes the
 # values it has checked). Without git history the build is `dev`, build 0.
@@ -12,6 +13,8 @@ cd "${0:A:h}/.."
 
 CONFIG=${CONFIG:-release}
 BUNDLE_ID=${BUNDLE_ID:-io.github.yuyu1015.FreeAudio}
+# The GitHub repository (owner/name) whose releases the app updates from.
+UPDATE_REPOSITORY=${UPDATE_REPOSITORY:-ExpTechTW/FreeAudio}
 # Apple silicon and Intel, as macOS 26 still runs on both.
 ARCHS=(${=ARCHS:-arm64 x86_64})
 APP=build/FreeAudio.app
@@ -54,6 +57,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>FreeAudioLabel</key><string>$LABEL</string>
     <key>FreeAudioDate</key><string>$DATE</string>
     <key>FreeAudioPrerelease</key>$PRERELEASE_TAG
+    <key>FreeAudioRepository</key><string>$UPDATE_REPOSITORY</string>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
     <key>CFBundleLocalizations</key><array><string>en</string><string>zh-Hant</string><string>ja</string></array>
     <key>CFBundleAllowMixedLocalizations</key><true/>
@@ -67,7 +71,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 plutil -lint -s "$APP/Contents/Info.plist"
 
-# A stable certificate keeps the System Audio Recording permission across rebuilds.
+# A stable certificate keeps the System Audio Recording permission across rebuilds, and lets the app check that an
+# update comes from the same developer.
 IDENTITY=${SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Apple Development/ { print $2; exit }')}
 if [[ -z "$IDENTITY" ]]; then
     IDENTITY=-

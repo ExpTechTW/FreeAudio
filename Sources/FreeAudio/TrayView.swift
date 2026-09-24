@@ -3,6 +3,7 @@ import SwiftUI
 struct TrayView: View {
     @EnvironmentObject private var audio: AudioController
     @EnvironmentObject private var language: LanguageSettings
+    @EnvironmentObject private var updater: Updater
     @AppStorage("tray.inputExpanded") private var inputExpanded = true
     @AppStorage("tray.outputExpanded") private var outputExpanded = true
     @AppStorage("tray.appsExpanded") private var appsExpanded = true
@@ -45,6 +46,18 @@ struct TrayView: View {
 
     private var footer: some View {
         VStack(spacing: 0) {
+            if let release = updater.available {
+                MenuRow {
+                    updater.showAvailable()
+                } label: {
+                    HStack {
+                        Text(updaterTitle(release))
+                        Spacer()
+                        Image(systemName: "arrow.down.circle.fill").foregroundStyle(.tint)
+                    }
+                }
+                .disabled(updater.isBusy)
+            }
             MenuRowMenu {
                 Picker(L("language.title"), selection: $language.language) {
                     ForEach(AppLanguage.allCases) { Text($0.displayName).tag($0) }
@@ -59,7 +72,7 @@ struct TrayView: View {
                 }
             }
             MenuRow(shortcut: KeyboardShortcut(",")) {
-                SettingsWindow.shared.show(audio: audio, language: language)
+                SettingsWindow.shared.show(audio: audio, language: language, updater: updater)
             } label: {
                 Text(L("action.settings"))
             }
@@ -68,6 +81,14 @@ struct TrayView: View {
             } label: {
                 Text(L("action.quit"))
             }
+        }
+    }
+
+    private func updaterTitle(_ release: Release) -> String {
+        switch updater.phase {
+        case .downloading(let percent): LF("update.downloading", "\(percent)%")
+        case .installing: L("update.installing")
+        default: LF("update.tray", release.label)
         }
     }
 }

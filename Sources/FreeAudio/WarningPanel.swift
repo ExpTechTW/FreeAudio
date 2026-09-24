@@ -7,10 +7,16 @@ final class WarningPanel: NSObject {
     private var actions: [() -> Void] = []
     private let onClose: () -> Void
 
-    init(title: String, text: String, buttons: [(title: String, action: () -> Void)], onClose: @escaping () -> Void) {
+    init(
+        style: NSAlert.Style = .critical,
+        title: String,
+        text: String,
+        buttons: [(title: String, action: () -> Void)],
+        onClose: @escaping () -> Void
+    ) {
         self.onClose = onClose
         super.init()
-        alert.alertStyle = .critical
+        alert.alertStyle = style
         alert.messageText = title
         alert.informativeText = text
         for (index, button) in buttons.enumerated() {

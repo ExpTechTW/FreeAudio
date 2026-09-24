@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
     @EnvironmentObject private var audio: AudioController
     @EnvironmentObject private var language: LanguageSettings
+    @EnvironmentObject private var updater: Updater
     @State private var launchAtLogin = false
     @State private var loginMessage: String?
 
@@ -18,7 +19,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("FreeAudio").font(.system(size: 20, weight: .bold))
                         Text(L("app.tagline")).foregroundStyle(.secondary)
-                        Text(LF("settings.version", version))
+                        Text(LF("settings.version", updater.build.label))
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     }
@@ -104,6 +105,8 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            UpdateSection()
+
             Section(L("settings.saved_apps")) {
                 if savedApps.isEmpty {
                     Text(L("settings.no_saved_apps")).foregroundStyle(.secondary)
@@ -150,10 +153,6 @@ struct SettingsView: View {
         }
     }
 
-    private var version: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
-    }
-
     private func symbol(forDevice uid: String) -> String {
         audio.outputDevices.first { $0.uid == uid }?.symbol ?? "hifispeaker"
     }
@@ -194,6 +193,105 @@ private struct StatusBadge: View {
             .foregroundStyle(color)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
+            .background(Capsule().fill(color.opacity(0.14)))
+    }
+}
+
+private struct UpdateSection: View {
+    @EnvironmentObject private var updater: Updater
+    @EnvironmentObject private var language: LanguageSettings
+
+    var body: some View {
+        Section {
+            LabeledContent {
+                HStack(spacing: 8) {
+                    Text(updater.build.label).monospacedDigit().textSelection(.enabled)
+                    KindBadge(prerelease: updater.build.isPrerelease)
+                }
+            } label: {
+                Label(L("update.current"), systemImage: "shippingbox")
+            }
+            if updater.unavailableReason == nil {
+                Toggle(isOn: Binding(get: { updater.preferences.checksAutomatically }, set: { updater.setChecksAutomatically($0) })) {
+                    Label(L("update.automatic"), systemImage: "arrow.triangle.2.circlepath")
+                }
+                Toggle(isOn: Binding(get: { updater.channel == .prerelease }, set: { updater.setReceivesPrereleases($0) })) {
+                    Label {
+                        Text(L("update.prerelease"))
+                        Text(L("update.prerelease_hint"))
+                    } icon: {
+                        Image(systemName: "testtube.2")
+                    }
+                }
+            }
+            HStack(spacing: 8) {
+                status
+                Spacer(minLength: 8)
+                if updater.available != nil, !updater.isBusy {
+                    Button(L("update.view_changes")) { updater.openReleasePage() }
+                    Button(L("update.install")) { updater.install() }
+                        .buttonStyle(.borderedProminent)
+                } else {
+                    Button(L("update.check_now")) { updater.check() }
+                        .disabled(updater.isBusy || updater.unavailableReason != nil)
+                }
+            }
+        } header: {
+            Text(L("settings.updates"))
+        } footer: {
+            if let last = updater.preferences.lastCheck, updater.unavailableReason == nil {
+                Text(LF("update.last_checked", last.formatted(.dateTime.month().day().hour().minute().locale(language.language.locale))))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder private var status: some View {
+        if let reason = updater.unavailableReason {
+            Text(reason).foregroundStyle(.secondary)
+        } else {
+            switch updater.phase {
+            case .idle:
+                if let release = updater.available { Text(LF("update.available", release.label)) }
+            case .checking:
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text(L("update.checking")).foregroundStyle(.secondary)
+                }
+            case .upToDate:
+                Label(L("update.up_to_date"), systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            case .downloading(let percent):
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(LF("update.downloading", "\(percent)%")).foregroundStyle(.secondary)
+                    ProgressView(value: Double(percent), total: 100)
+                }
+            case .installing:
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text(L("update.installing")).foregroundStyle(.secondary)
+                }
+            case .failed(let failure):
+                Text(failure.message)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+/// Release or pre-release, like the label GitHub puts on a release.
+private struct KindBadge: View {
+    let prerelease: Bool
+
+    var body: some View {
+        let color: Color = prerelease ? .orange : .green
+        Text(L(prerelease ? "update.kind_prerelease" : "update.kind_release"))
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
             .background(Capsule().fill(color.opacity(0.14)))
     }
 }
