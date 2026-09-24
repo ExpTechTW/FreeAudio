@@ -19,18 +19,21 @@ macOS 選單列音訊控制工具。用 Core Audio process tap 做到按應用�
 - 設定按 App（bundle ID）與裝置（UID）記住，下次開啟 App 時自動套用。
 - **等化器**：沿用「音樂」App 的規格，10 段（32 Hz–16 kHz）、每段與前級擴大都是 ±12 dB。22 組內建預設集的名稱和數值都直接取自「音樂」App 本身，沒有自行調整（見下方「等化器來源」）。
 - **介面語言**：繁體中文、日文、英文，預設跟隨系統。可以在面板右上角的地球圖示或設定視窗裡即時切換，不用重新開啟。
+- **自動更新**：從 GitHub releases 檢查新版本，啟動時與之後每 6 小時檢查一次，每個新版本只通知一次；也可以在設定視窗的「軟體更新」手動檢查。只安裝同一個開發團隊簽署、版本也和 release 標示相符的 App，更新完自動重新開啟。正式版只收正式版；打開「接收測試版」會收到每次推送到 main 的快照。App 要放在可以寫入的資料夾（例如「應用程式」）才能自動更新。
 
 ## 建置與執行
 
 需要 macOS 26 以上、Xcode 26 以上。
 
 ```bash
-scripts/build-app.sh          # 產生 build/FreeAudio.app
+scripts/build-app.sh          # 產生 build/FreeAudio.app（Apple silicon 與 Intel 通用）
 cp -R build/FreeAudio.app /Applications/
 open /Applications/FreeAudio.app
 ```
 
-腳本會自動使用鑰匙圈裡的 Apple Development 憑證簽署。沒有憑證時改用 ad-hoc 簽署，每次重新建置後 macOS 都會再詢問一次權限。
+腳本會自動使用鑰匙圈裡的 Apple Development 憑證簽署。沒有憑證時改用 ad-hoc 簽署，每次重新建置後 macOS 都會再詢問一次權限，也無法自動更新。版本號由 `scripts/version.sh` 依 git 紀錄決定（見下方「發布」）。
+
+從 GitHub 下載的 App 沒有經過公證，第一次開啟時 macOS 會擋下來，到「系統設定 › 隱私權與安全性」按「強制打開」即可。之後的更新由 FreeAudio 自己下載，不會再被擋。
 
 FreeAudio 需要「系統音訊錄製」權限。在面板或設定視窗按「允許存取…」，然後在系統對話框中選擇「允許」；第一次調整 App 時也會自動詢問一次。還沒回答過之前，FreeAudio 不會出現在「系統設定 › 隱私權與安全性」的清單裡。如果對話框沒有出現，打開隱私權設定，在「系統音訊錄製」清單下方按「＋」加入 FreeAudio.app。之前按過「不允許」的話，到同一個清單把 FreeAudio 的開關打開即可。開啟「登入時啟動」前，建議先把 App 放進「應用程式」資料夾。
 
@@ -42,7 +45,31 @@ FreeAudio 需要「系統音訊錄製」權限。在面板或設定視窗按「�
 swift test
 ```
 
-測試涵蓋等化器頻率響應、音量與平衡、限幅器、NaN／Inf 防護、聲道對應、設定檔解碼，以及三種語言的字串是否齊全、切換語言是否立即生效。
+測試涵蓋等化器頻率響應、音量與平衡、限幅器、NaN／Inf 防護、聲道對應、設定檔解碼，以及三種語言的字串是否齊全、切換語言是否立即生效。更新的部分涵蓋版本比較（只和同一個通道比、比 build code 不比名稱）、GitHub release 的解析、下載檔的 SHA-256 與大小，以及簽署檢查：沒有簽署、ad-hoc 簽署、其他團隊簽署、簽署後被改過，或版本和 release 不符的 App 都不會被安裝。
+
+## 發布
+
+`.github/workflows/release.yml` 沿用 DPIP 的命名與發布規則：
+
+- **每次推送到 main** 發布一個快照，是 GitHub 上的 pre-release，tag 就是它的名稱（例如 `26w39a`）。
+- **推送 `v<yy>.<n>` tag** 發布正式版，例如 `git tag v26.1 && git push origin v26.1`。
+
+| | 正式版 | 快照 |
+| --- | --- | --- |
+| 名稱 | `26.1` | `26w39a`：年、ISO 週（台北時間）、當週第幾個 |
+| `CFBundleShortVersionString` | `26.1` | 它之後的正式版，例如 `26.2` |
+| `CFBundleVersion`（build code） | `126000042` | `126000043` |
+
+build code 是 `1`、兩位數年份、今年第幾個 commit，只會往上長。App 只用它判斷哪個版本比較新，而且只和同一個通道比（正式版比正式版、快照比快照）；它寫在每個 release 內容最後的 `<!-- freeaudio-build: … -->` 註解裡。release 內容由 `scripts/notes.sh` 從 commit 的條目行產生，格式見 [commit.md](commit.md)：快照列出上一個版本之後的變更，正式版列出上一個正式版之後的全部變更。
+
+CI 需要兩個 repository secret，用和本機建置相同的 Apple Development 憑證簽署。已安裝的 FreeAudio 只接受同一個團隊簽署的更新，換了憑證 macOS 也會重新詢問音訊權限。
+
+| Secret | 內容 |
+| --- | --- |
+| `APPLE_DEV_CERT_BASE64` | 從「鑰匙圈存取」的「我的憑證」匯出的 .p12（含私鑰），再用 `base64 -i FreeAudio.p12 \| pbcopy` 轉成文字 |
+| `APPLE_DEV_CERT_PASSWORD` | 匯出時設定的密碼 |
+
+App 用 GitHub 的公開 API 檢查更新，所以 repository 要公開，更新才會運作。
 
 ## 運作方式
 
@@ -64,6 +91,7 @@ FreeAudio 只處理你改過設定的 App，其他聲音照常直接送到硬體
 | `Settings.swift` | 設定模型、等化器預設集、儲存 |
 | `TrayView.swift`、`Components.swift`、`SettingsView.swift` | 選單列面板、共用元件（卡片、滑桿、等化器曲線）與設定視窗 |
 | `Localization.swift` | App 內語言切換與字串查詢 |
+| `Update.swift`、`Updater.swift` | 版本資訊、GitHub release 的比較、下載、驗證與替換 |
 
 ## 介面
 
