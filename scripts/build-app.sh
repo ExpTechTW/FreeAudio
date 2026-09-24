@@ -12,6 +12,8 @@ cd "${0:A:h}/.."
 
 CONFIG=${CONFIG:-release}
 BUNDLE_ID=${BUNDLE_ID:-io.github.yuyu1015.FreeAudio}
+# Apple silicon and Intel, as macOS 26 still runs on both.
+ARCHS=(${=ARCHS:-arm64 x86_64})
 APP=build/FreeAudio.app
 
 if [[ -z ${FREEAUDIO_CODE:-} ]] && git rev-parse -q --verify HEAD >/dev/null 2>&1; then
@@ -24,8 +26,10 @@ DATE=${FREEAUDIO_DATE:-}
 PRERELEASE=${FREEAUDIO_PRERELEASE:-true}
 [[ $PRERELEASE == true ]] && PRERELEASE_TAG="<true/>" || PRERELEASE_TAG="<false/>"
 
-swift build -c "$CONFIG"
-BIN=$(swift build -c "$CONFIG" --show-bin-path)
+ARCH_FLAGS=()
+for arch in $ARCHS; do ARCH_FLAGS+=(--arch "$arch"); done
+swift build -c "$CONFIG" "${ARCH_FLAGS[@]}"
+BIN=$(swift build -c "$CONFIG" "${ARCH_FLAGS[@]}" --show-bin-path)
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -71,4 +75,4 @@ if [[ -z "$IDENTITY" ]]; then
 fi
 codesign --force --sign "$IDENTITY" --timestamp=none "$APP"
 codesign --verify --strict "$APP"
-echo "Built $APP ($LABEL, $TRAIN build $CODE, $CONFIG, signed with: $IDENTITY)"
+echo "Built $APP ($LABEL, $TRAIN build $CODE, $CONFIG, ${ARCHS[*]}, signed with: $IDENTITY)"
