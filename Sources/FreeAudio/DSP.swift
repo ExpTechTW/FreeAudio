@@ -182,18 +182,26 @@ final class RouteRenderer: @unchecked Sendable {
     private let deviceStage: StageProcessor?
     private let leftChannel: Int
     private let rightChannel: Int
+    private let tapLeftChannel: Int
+    private let tapRightChannel: Int
     private let sampleRate: Float
     private let left = UnsafeMutablePointer<Float>.allocate(capacity: capacity)
     private let right = UnsafeMutablePointer<Float>.allocate(capacity: capacity)
     private var limiterGain: Float = 1
 
     /// `leftChannel`/`rightChannel` are zero-based indices across all output channels of the device.
-    init(sampleRate: Double, appStage: StageProcessor?, deviceStage: StageProcessor?, leftChannel: Int, rightChannel: Int) {
+    /// `tapLeftChannel`/`tapRightChannel` pick the stereo pair out of a tap that carries a device's own channels.
+    init(
+        sampleRate: Double, appStage: StageProcessor?, deviceStage: StageProcessor?, leftChannel: Int, rightChannel: Int,
+        tapLeftChannel: Int = 0, tapRightChannel: Int = 1
+    ) {
         self.sampleRate = Float(sampleRate)
         self.appStage = appStage
         self.deviceStage = deviceStage
         self.leftChannel = leftChannel
         self.rightChannel = rightChannel
+        self.tapLeftChannel = tapLeftChannel
+        self.tapRightChannel = tapRightChannel
     }
 
     deinit {
@@ -251,9 +259,12 @@ final class RouteRenderer: @unchecked Sendable {
             right.update(from: source, count: frames)
             return
         }
+        // A mixdown is plain stereo, which the pair falls back to.
+        let leftIndex = tapLeftChannel < channels ? tapLeftChannel : 0
+        let rightIndex = tapRightChannel < channels ? tapRightChannel : 1
         for frame in 0..<frames {
-            left[frame] = source[frame * channels]
-            right[frame] = source[frame * channels + 1]
+            left[frame] = source[frame * channels + leftIndex]
+            right[frame] = source[frame * channels + rightIndex]
         }
     }
 

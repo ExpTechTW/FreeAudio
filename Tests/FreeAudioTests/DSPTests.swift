@@ -164,13 +164,17 @@ private func sine(_ amplitude: Double) -> (Int, Int) -> Float {
     { frame, _ in Float(amplitude * sin(2 * .pi * 1_000 * Double(frame) / sampleRate)) }
 }
 
-private func renderer(app: StageControl? = nil, device: StageControl? = nil, left: Int = 0, right: Int = 1) -> RouteRenderer {
+private func renderer(
+    app: StageControl? = nil, device: StageControl? = nil, left: Int = 0, right: Int = 1, tapLeft: Int = 0, tapRight: Int = 1
+) -> RouteRenderer {
     RouteRenderer(
         sampleRate: sampleRate,
         appStage: app.map { StageProcessor(control: $0, sampleRate: sampleRate) },
         deviceStage: device.map { StageProcessor(control: $0, sampleRate: sampleRate) },
         leftChannel: left,
-        rightChannel: right
+        rightChannel: right,
+        tapLeftChannel: tapLeft,
+        tapRightChannel: tapRight
     )
 }
 
@@ -231,6 +235,17 @@ private func renderer(app: StageControl? = nil, device: StageControl? = nil, lef
         #expect(peaks[0] == 0 && peaks[1] == 0 && abs(peaks[2] - 0.5) < 0.002 && peaks[3] < 1e-6)
     }
 
+    @Test func readsTheStereoPairOfADeviceTap() throws {
+        // A four-channel interface playing on channels 3 and 4.
+        let buffers = IOBuffers(input: [4], output: [2])
+        buffers.render(renderer(tapLeft: 2, tapRight: 3), cycles: 2) { _, channel in [0.9, 0.9, 0.4, 0.2][channel] }
+        #expect(try #require(buffers.outputPeaks) == [0.4, 0.2])
+        // A stereo mixdown has no such channels; the pair falls back to the first two.
+        let stereo = IOBuffers(input: [2], output: [2])
+        stereo.render(renderer(tapLeft: 2, tapRight: 3), cycles: 2) { _, channel in [0.4, 0.2][channel] }
+        #expect(try #require(stereo.outputPeaks) == [0.4, 0.2])
+    }
+
     @Test func writesNonInterleavedOutputAndAppliesDeviceStage() throws {
         let buffers = IOBuffers(input: [2], output: [1, 1])
         buffers.render(renderer(app: control(), device: control(left: 1, right: 0.5)), cycles: 5, sine(0.5))
@@ -258,6 +273,27 @@ private func renderer(app: StageControl? = nil, device: StageControl? = nil, lef
         buffers.render(renderer()) { _, _ in 0.5 }
         buffers.input[0].mData = data
         #expect(try #require(buffers.outputPeaks) == [0, 0])
+    }
+}
+
+@Suite struct RouteDescriptionTests {
+    private func description(_ source: RouteKey.Source, tapOn device: String?, mute: CATapMuteBehavior = .muted) -> CATapDescription {
+        AudioRoute.makeDescription(RouteSpec(key: RouteKey(source: source, deviceUID: "tv", tapDeviceUID: device), processes: [7, 9], mute: mute))
+    }
+
+    @Test func aDeviceTapOnlyTakesThatDevicesAudio() {
+        // Asked for a mixdown, a tap takes its processes' audio from every device, whatever device it names: an app
+        // would keep playing on a device it had left.
+        let app = description(.app("com.example.player"), tapOn: "speakers")
+        #expect(app.deviceUID == "speakers" && app.stream == 0 && !app.isMixdown && !app.isExclusive && app.processes == [7, 9])
+        let mirror = description(.system, tapOn: "speakers", mute: .unmuted)
+        #expect(mirror.deviceUID == "speakers" && !mirror.isMixdown && mirror.isExclusive && mirror.muteBehavior == .unmuted)
+    }
+
+    @Test func movingAnAppTakesItsAudioFromEveryDevice() {
+        let moved = description(.app("com.example.player"), tapOn: nil)
+        #expect(moved.deviceUID == nil && moved.isMixdown && !moved.isMono && moved.muteBehavior == .muted)
+        #expect(moved.isPrivate)
     }
 }
 

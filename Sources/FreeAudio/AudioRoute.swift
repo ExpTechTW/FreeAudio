@@ -12,20 +12,23 @@ struct RouteKey: Hashable {
     let source: Source
     /// Output device the route renders to.
     let deviceUID: String
+    /// The device whose audio is taken, or `nil` for all of an app's audio wherever it plays. Part of the key:
+    /// an app processed on a device and copied there from the default device has two routes to it.
+    let tapDeviceUID: String?
 }
 
 struct RouteSpec: Equatable {
     let key: RouteKey
     /// Tapped processes for app routes; excluded processes for system routes. Sorted.
     var processes: [AudioObjectID]
-    /// When set, only the audio headed to this device is tapped.
-    var tapDeviceUID: String?
     /// `.mutedWhenTapped` replaces the source with FreeAudio's rendering, `.unmuted` adds a copy,
     /// and `.muted` keeps the source silent even before the route starts.
     var mute: CATapMuteBehavior
 
+    var tapDeviceUID: String? { key.tapDeviceUID }
+
     func canUpdateInPlace(to other: RouteSpec) -> Bool {
-        key == other.key && tapDeviceUID == other.tapDeviceUID && mute == other.mute
+        key == other.key && mute == other.mute
     }
 }
 
@@ -53,15 +56,17 @@ final class AudioRoute {
             try check(AudioHardwareCreateAggregateDevice(configuration as CFDictionary, &aggregateID), "error.create_mixer_output")
 
             let sampleRate = CA.value(aggregateID, CA.address(kAudioDevicePropertyNominalSampleRate), fallback: Float64(48_000))
-            let stereo = CA.device(uid: deviceUID).map {
-                CA.array($0, CA.address(kAudioDevicePropertyPreferredChannelsForStereo, scope: kAudioObjectPropertyScopeOutput), as: UInt32.self)
-            } ?? []
+            let stereo = Self.stereoPair(of: deviceUID)
+            // A device tap carries that device's channels, with the audio on its stereo pair.
+            let tapStereo = spec.tapDeviceUID.map(Self.stereoPair(of:)) ?? (left: 0, right: 1)
             let renderer = RouteRenderer(
                 sampleRate: sampleRate,
                 appStage: appControl.map { StageProcessor(control: $0, sampleRate: sampleRate) },
                 deviceStage: deviceControl.map { StageProcessor(control: $0, sampleRate: sampleRate) },
-                leftChannel: max(Int(stereo.first ?? 1) - 1, 0),
-                rightChannel: max(Int(stereo.dropFirst().first ?? 2) - 1, 0)
+                leftChannel: stereo.left,
+                rightChannel: stereo.right,
+                tapLeftChannel: tapStereo.left,
+                tapRightChannel: tapStereo.right
             )
             self.renderer = renderer
             try check(AudioDeviceCreateIOProcIDWithBlock(&ioProcID, aggregateID, nil, renderer.makeIOBlock()), "error.create_audio_processor")
@@ -123,22 +128,28 @@ final class AudioRoute {
         }
     }
 
-    private static func makeDescription(_ spec: RouteSpec) -> CATapDescription {
+    static func makeDescription(_ spec: RouteSpec) -> CATapDescription {
+        // A device tap keeps the device's own channels, which the renderer reads. Asked for a mixdown, it takes the
+        // processes' audio from every device instead, so a route would play an app wherever it had ever played.
         let description = switch (spec.key.source, spec.tapDeviceUID) {
         case (.app, nil): CATapDescription(stereoMixdownOfProcesses: spec.processes)
         case (.app, let device?): CATapDescription(processes: spec.processes, deviceUID: device, stream: 0)
         case (.system, nil): CATapDescription(stereoGlobalTapButExcludeProcesses: spec.processes)
         case (.system, let device?): CATapDescription(excludingProcesses: spec.processes, deviceUID: device, stream: 0)
         }
-        if spec.tapDeviceUID != nil {
-            description.isMixdown = true
-            description.isMono = false
-        }
         description.uuid = UUID()
         description.name = "FreeAudio"
         description.isPrivate = true
         description.muteBehavior = spec.mute
         return description
+    }
+
+    /// The device's stereo pair, zero-based across its output channels.
+    private static func stereoPair(of uid: String) -> (left: Int, right: Int) {
+        let pair = CA.device(uid: uid).map {
+            CA.array($0, CA.address(kAudioDevicePropertyPreferredChannelsForStereo, scope: kAudioObjectPropertyScopeOutput), as: UInt32.self)
+        } ?? []
+        return (max(Int(pair.first ?? 1) - 1, 0), max(Int(pair.dropFirst().first ?? 2) - 1, 0))
     }
 
     private static func aggregateConfiguration(deviceUID: String, tap: UUID) -> [String: Any] {

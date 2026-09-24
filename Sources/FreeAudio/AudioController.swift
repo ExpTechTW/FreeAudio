@@ -59,8 +59,8 @@ final class AudioController: ObservableObject {
     private var reRouters: [AudioObjectID] = []
     private var lastPlayed: [String: Date] = [:]
     private var lastAnyPlaying = Date.distantPast
-    /// Output devices each running app has played to, so its routes follow it there.
-    private var usedDevices: [String: [String]] = [:]
+    /// Output devices each running app plays to, and when it was last seen playing there.
+    private var usedDevices: [String: [String: Date]] = [:]
     private var routes: [RouteKey: AudioRoute] = [:]
     private var lingering: [RouteKey: Date] = [:]
     private var retryAfter: [RouteKey: Date] = [:]
@@ -433,7 +433,8 @@ final class AudioController: ObservableObject {
             // No mute or volume control (e.g. HDMI): mute everything playing to it with a tap.
             let control = StageControl()
             control.update(gainLeft: 0, gainRight: 0, eq: EQSettings())
-            let spec = RouteSpec(key: RouteKey(source: .system, deviceUID: device.uid), processes: ownProcesses.sorted(), tapDeviceUID: device.uid, mute: .muted)
+            let key = RouteKey(source: .system, deviceUID: device.uid, tapDeviceUID: device.uid)
+            let spec = RouteSpec(key: key, processes: ownProcesses.sorted(), mute: .muted)
             silencers[device.uid] = try? AudioRoute(spec: spec, appControl: nil, deviceControl: control)
         }
         lastSilenced[key] = Date()
@@ -749,18 +750,15 @@ final class AudioController: ObservableObject {
         reconcileRoutes()
     }
 
-    /// Output devices the app plays to, remembered while it runs.
+    /// Output devices the app plays to; see `RoutePlan.devicesInUse`.
     private func devicesInUse(_ app: AudioApp) -> [String] {
-        var uids = usedDevices[app.id] ?? []
         let address = CA.address(kAudioProcessPropertyDevices, scope: kAudioObjectPropertyScopeOutput)
-        for process in app.processes {
-            for device in CA.array(process, address, as: AudioObjectID.self) {
-                guard let uid = outputDevices.first(where: { $0.id == device })?.uid, !uids.contains(uid) else { continue }
-                uids.append(uid)
-            }
+        let current = app.processes.flatMap { process in
+            CA.array(process, address, as: AudioObjectID.self).compactMap { device in outputDevices.first { $0.id == device }?.uid }
         }
-        usedDevices[app.id] = uids
-        return uids
+        let seen = RoutePlan.devicesInUse(seen: usedDevices[app.id] ?? [:], current: current, now: Date())
+        usedDevices[app.id] = seen
+        return seen.keys.sorted()
     }
 
     // MARK: - Output processing and multi-output
@@ -969,68 +967,19 @@ final class AudioController: ObservableObject {
     private func desiredRoutes() -> [RouteKey: RouteSpec] {
         // Without knowing our own process, a system tap could capture FreeAudio's output.
         guard let defaultUID = defaultOutput?.uid, !ownProcesses.isEmpty else { return [:] }
-        let present = Set(outputDevices.map(\.uid))
-        let globalExtras = state.globalMultiOutput
-            ? state.globalOutputUIDs.filter { $0 != defaultUID && present.contains($0) }
-            : []
-
-        var specs: [RouteKey: RouteSpec] = [:]
-        func add(_ source: RouteKey.Source, to deviceUID: String, tapping processes: [AudioObjectID], on tapDevice: String?, mute: CATapMuteBehavior) {
-            let key = RouteKey(source: source, deviceUID: deviceUID)
-            // A device silenced as a stand-in for a missing one gets nothing from FreeAudio either.
-            guard specs[key] == nil, silencers[deviceUID] == nil else { return }
-            specs[key] = RouteSpec(key: key, processes: processes.sorted(), tapDeviceUID: tapDevice, mute: mute)
-        }
-
-        // Apps whose audio FreeAudio renders itself, and apps kept out of the system-wide mirror.
-        var takenOver: [AudioObjectID] = []
-        var unmirrored: [AudioObjectID] = []
-        if state.perAppEnabled {
-            for app in runningApps {
-                guard let settings = state.apps[app.id] else { continue }
-                let source = RouteKey.Source.app(app.id)
-                let chosen = settings.outputUID.flatMap { present.contains($0) ? $0 : nil }
-                let extras = settings.multiOutput ? settings.extraOutputUIDs.filter(present.contains) : []
-                // The app's own output stays muted for as long as FreeAudio renders it, so mute and
-                // volume are only gain changes: instant, and nothing leaks when playback starts.
-                if let chosen {
-                    // Moves all of the app's audio to the chosen device.
-                    add(source, to: chosen, tapping: app.processes, on: nil, mute: .muted)
-                    for uid in extras { add(source, to: uid, tapping: app.processes, on: nil, mute: .unmuted) }
-                    takenOver += app.processes
-                } else if appOutputMissing(app.id) {
-                    // Its device isn't connected: keep the app silent instead of playing it elsewhere.
-                    add(source, to: defaultUID, tapping: app.processes, on: nil, mute: .muted)
-                    takenOver += app.processes
-                } else {
-                    // Follows the system: processes the app's audio where it already plays,
-                    // and copies what reaches the default device to the extra outputs.
-                    if settings.needsProcessing {
-                        for uid in [defaultUID] + devicesInUse(app) where present.contains(uid) {
-                            add(source, to: uid, tapping: app.processes, on: uid, mute: .muted)
-                        }
-                        takenOver += app.processes
-                    }
-                    if settings.needsProcessing || !extras.isEmpty {
-                        for uid in extras + (settings.excludeFromGlobal ? [] : globalExtras) {
-                            add(source, to: uid, tapping: app.processes, on: defaultUID, mute: .unmuted)
-                        }
-                        unmirrored += app.processes
-                    }
-                }
-                if settings.excludeFromGlobal { unmirrored += app.processes }
-            }
-        }
-
-        let excluded = Set(ownProcesses + reRouters + takenOver)
-        if deviceSettings(for: defaultUID).needsProcessing {
-            add(.system, to: defaultUID, tapping: Array(excluded), on: defaultUID, mute: .mutedWhenTapped)
-        }
-        let mirrorExcluded = Array(excluded.union(unmirrored))
-        for uid in globalExtras {
-            add(.system, to: uid, tapping: mirrorExcluded, on: defaultUID, mute: .unmuted)
-        }
-        return specs
+        let apps = state.perAppEnabled ? runningApps.filter { state.apps[$0.id] != nil } : []
+        return RoutePlan.routes(
+            defaultUID: defaultUID,
+            outputs: Set(outputDevices.map(\.uid)),
+            silenced: Set(silencers.keys),
+            state: state,
+            apps: apps.map { app in
+                RoutePlan.App(
+                    id: app.id, processes: app.processes, playsOn: devicesInUse(app), outputMissing: appOutputMissing(app.id)
+                )
+            },
+            own: ownProcesses + reRouters
+        )
     }
 
     private func appControl(for key: RouteKey) -> StageControl? {
