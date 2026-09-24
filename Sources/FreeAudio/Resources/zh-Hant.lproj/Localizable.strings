@@ -1,0 +1,134 @@
+"section.input" = "輸入";
+"section.output" = "輸出";
+"action.settings" = "設定…";
+"action.quit" = "結束 FreeAudio";
+"action.mute" = "靜音";
+"action.unmute" = "取消靜音";
+"action.reset" = "重置";
+"action.rescan" = "重新掃描";
+"action.expand" = "展開";
+"action.collapse" = "收合";
+"a11y.mute" = "將「%@」靜音";
+"a11y.unmute" = "取消「%@」的靜音";
+"a11y.app_settings" = "「%@」的輸出、平衡與等化器";
+
+"language.title" = "語言";
+"language.system" = "跟隨系統（%@）";
+
+"device.output_not_found" = "未偵測到輸出裝置";
+"device.input_not_found" = "未偵測到輸入裝置";
+"device.follow_system" = "系統預設";
+"device.unavailable" = "%@（未連接）";
+"device.processing" = "輸出平衡與等化器";
+"device.processing_hint" = "套用到此裝置播放的所有聲音";
+
+"mic.on" = "麥克風可用";
+"mic.muted" = "麥克風已靜音";
+"mic.unavailable" = "沒有可用的麥克風";
+
+"guard.missing_title" = "找不到「%@」";
+"guard.missing_title_two" = "找不到「%1$@」和「%2$@」";
+"guard.output_disabled" = "輸出已停用，聲音不會從其他裝置播出。重新連接後會自動恢復。";
+"guard.input_disabled" = "麥克風已停用，不會改用其他麥克風收音。重新連接後會自動恢復。";
+"guard.both_disabled" = "輸出和麥克風都已停用，不會改用其他裝置。重新連接後會自動恢復。";
+"guard.use_current" = "改用「%@」";
+"guard.use_current_devices" = "改用目前的裝置";
+"guard.unknown_device" = "所選裝置";
+"guard.blocked" = "系統切換到「%1$@」，已改回你選擇的「%2$@」。";
+"guard.dismiss" = "知道了";
+"guard.ok" = "好";
+"guard.app_missing" = "找不到「%@」，這個 App 的聲音已停用";
+
+"multi.global" = "全局多輸出";
+"multi.global_subtitle" = "將音訊鏡像到多個裝置";
+"multi.no_other_devices" = "沒有其他輸出裝置";
+
+"tray.app_volume" = "按應用音量";
+"tray.no_playing_apps" = "目前沒有正在播放音訊的應用程式";
+"conflict.warning" = "%@ 也在處理其他 App 的音訊。同時執行會讓聲音重複或互相干擾，建議先結束它。";
+
+"app.settings" = "輸出、平衡與等化器";
+"app.output_device" = "輸出裝置";
+"app.multi_output" = "多輸出";
+"app.exclude_global" = "從全局多輸出中排除";
+"app.reset" = "重置此應用程式的設定";
+
+"balance.left" = "左";
+"balance.right" = "右";
+"balance.help" = "左右聲道平衡";
+
+"eq.title" = "等化器";
+"eq.preset" = "預設集";
+"eq.preamp" = "前級擴大";
+
+"preset.flat" = "平直";
+"preset.acoustic" = "原音";
+"preset.bassBoost" = "增加低音";
+"preset.bassCut" = "減少低音";
+"preset.classical" = "古典音樂";
+"preset.dance" = "舞曲";
+"preset.deep" = "低沉聲音";
+"preset.electronic" = "電子音樂";
+"preset.hipHop" = "嘻哈";
+"preset.jazz" = "爵士樂";
+"preset.latin" = "拉丁樂";
+"preset.loudness" = "響度";
+"preset.lounge" = "沙發音樂";
+"preset.piano" = "鋼琴";
+"preset.pop" = "流行樂";
+"preset.rnb" = "R&B";
+"preset.rock" = "搖滾";
+"preset.smallSpeakers" = "小型揚聲器";
+"preset.spokenWord" = "誦讀";
+"preset.trebleBoost" = "增加高音";
+"preset.trebleCut" = "減少高音";
+"preset.vocal" = "增加人聲";
+"preset.custom" = "手動";
+
+"permission.denied" = "FreeAudio 沒有「系統音訊錄製」權限。請打開隱私權設定，在清單中開啟 FreeAudio。";
+"permission.request" = "允許存取…";
+"permission.onboarding" = "允許 FreeAudio 存取系統音訊，才能調整個別 App 的音量。";
+"permission.request_hint" = "按「允許存取」後，在系統對話框中選擇「允許」。如果沒有出現對話框，請打開隱私權設定，按清單下方的「＋」加入 FreeAudio。";
+"permission.open_settings" = "打開隱私權設定";
+"permission.status_authorized" = "已允許";
+"permission.status_denied" = "已拒絕";
+"permission.status_not_determined" = "尚未允許";
+"permission.status_unknown" = "無法確認";
+
+"window.settings_title" = "FreeAudio 設定";
+"app.tagline" = "按應用程式調整音量、輸出與等化器";
+"settings.general" = "一般";
+"settings.launch_at_login" = "登入時啟動";
+"settings.login_needs_approval" = "請在「系統設定 > 一般 > 登入項目」中允許 FreeAudio。";
+"settings.remember_sound" = "重新開機後恢復聲音設定";
+"settings.remember_sound_hint" = "記住輸出與輸入裝置、音量和靜音狀態，FreeAudio 啟動時自動恢復。";
+"settings.remember_sound_needs_login" = "要在重新開機後自動恢復，請同時開啟「登入時啟動」。";
+"settings.devices" = "裝置";
+"settings.lock_devices" = "鎖定所選裝置";
+"settings.lock_devices_hint" = "只用在 FreeAudio 選的喇叭和麥克風；系統自動切換會被改回來。找不到所選裝置時停用並跳出警告，不會改用其他裝置。";
+"settings.input_follows_output" = "麥克風跟著輸出裝置切換";
+"settings.input_follows_output_hint" = "選擇耳機等輸出裝置時，也改用它的麥克風。關閉時麥克風不會跟著換，系統自動換過去也會改回來。";
+"settings.new_devices_silent" = "新裝置預設 0% 並靜音";
+"settings.new_devices_silent_hint" = "第一次連接的喇叭或麥克風會先設為 0% 並靜音，避免意外發出聲音或收音。";
+"settings.permission" = "權限";
+"settings.audio_capture" = "系統音訊錄製";
+"settings.permission_hint" = "FreeAudio 只在你調整應用程式的音量、輸出或等化器時處理它的聲音，音訊不會被儲存或傳送。";
+"settings.saved_apps" = "已儲存的應用程式設定";
+"settings.no_saved_apps" = "尚未調整任何應用程式";
+"settings.reset_all_apps" = "重置所有應用程式";
+"settings.saved_devices" = "已儲存的裝置設定";
+"settings.version" = "版本 %@";
+
+"summary.muted" = "靜音";
+"summary.volume" = "音量 %@";
+"summary.output" = "輸出到 %@";
+"summary.balance" = "平衡 %@";
+"summary.eq" = "均衡器：%@";
+"summary.multi" = "多輸出";
+"summary.excluded" = "不鏡像";
+
+"error.create_process_tap" = "建立應用程式音訊擷取";
+"error.create_mixer_output" = "建立混音輸出";
+"error.create_audio_processor" = "建立音訊處理器";
+"error.start_audio_processor" = "啟動音訊處理器";
+"error.operation_failed" = "%1$@失敗（%2$d）";

@@ -1,0 +1,134 @@
+"section.input" = "入力";
+"section.output" = "出力";
+"action.settings" = "設定…";
+"action.quit" = "FreeAudio を終了";
+"action.mute" = "消音";
+"action.unmute" = "消音を解除";
+"action.reset" = "リセット";
+"action.rescan" = "再スキャン";
+"action.expand" = "展開";
+"action.collapse" = "折りたたむ";
+"a11y.mute" = "「%@」を消音";
+"a11y.unmute" = "「%@」の消音を解除";
+"a11y.app_settings" = "「%@」の出力、バランス、イコライザ";
+
+"language.title" = "言語";
+"language.system" = "システムに合わせる（%@）";
+
+"device.output_not_found" = "出力デバイスが見つかりません";
+"device.input_not_found" = "入力デバイスが見つかりません";
+"device.follow_system" = "システムのデフォルト";
+"device.unavailable" = "%@（未接続）";
+"device.processing" = "出力のバランスとイコライザ";
+"device.processing_hint" = "このデバイスで再生されるすべてのサウンドに適用されます";
+
+"mic.on" = "マイクは使用可能";
+"mic.muted" = "マイクは消音中";
+"mic.unavailable" = "使用できるマイクがありません";
+
+"guard.missing_title" = "「%@」が見つかりません";
+"guard.missing_title_two" = "「%1$@」と「%2$@」が見つかりません";
+"guard.output_disabled" = "出力を無効にしました。ほかのデバイスから音は出ません。再接続すると自動で元に戻ります。";
+"guard.input_disabled" = "マイクを無効にしました。ほかのマイクで収音することはありません。再接続すると自動で元に戻ります。";
+"guard.both_disabled" = "出力とマイクを無効にしました。ほかのデバイスに切り替えることはありません。再接続すると自動で元に戻ります。";
+"guard.use_current" = "「%@」を使う";
+"guard.use_current_devices" = "現在のデバイスを使う";
+"guard.unknown_device" = "選択したデバイス";
+"guard.blocked" = "システムが「%1$@」に切り替えたため、選択中の「%2$@」に戻しました。";
+"guard.dismiss" = "閉じる";
+"guard.ok" = "OK";
+"guard.app_missing" = "「%@」が見つからないため、このアプリの音を無効にしています";
+
+"multi.global" = "全体マルチ出力";
+"multi.global_subtitle" = "複数のデバイスへ同時に出力";
+"multi.no_other_devices" = "ほかの出力デバイスがありません";
+
+"tray.app_volume" = "アプリ別音量";
+"tray.no_playing_apps" = "オーディオを再生中のアプリはありません";
+"conflict.warning" = "%@ もほかのアプリのオーディオを処理しています。同時に使うとサウンドが二重になったり干渉したりするため、終了することをおすすめします。";
+
+"app.settings" = "出力、バランス、イコライザ";
+"app.output_device" = "出力デバイス";
+"app.multi_output" = "マルチ出力";
+"app.exclude_global" = "全体マルチ出力から除外";
+"app.reset" = "このアプリの設定をリセット";
+
+"balance.left" = "左";
+"balance.right" = "右";
+"balance.help" = "左右のバランス";
+
+"eq.title" = "イコライザ";
+"eq.preset" = "プリセット";
+"eq.preamp" = "プリアンプ";
+
+"preset.flat" = "フラット";
+"preset.acoustic" = "アコースティック";
+"preset.bassBoost" = "低音を上げる";
+"preset.bassCut" = "低音を下げる";
+"preset.classical" = "クラシック";
+"preset.dance" = "ダンス";
+"preset.deep" = "ディープ";
+"preset.electronic" = "エレクトロニック";
+"preset.hipHop" = "ヒップホップ";
+"preset.jazz" = "ジャズ";
+"preset.latin" = "ラテン";
+"preset.loudness" = "ラウドネス";
+"preset.lounge" = "ラウンジ";
+"preset.piano" = "ピアノ";
+"preset.pop" = "ポップ";
+"preset.rnb" = "R&B";
+"preset.rock" = "ロック";
+"preset.smallSpeakers" = "スモールスピーカー";
+"preset.spokenWord" = "スポークンワード";
+"preset.trebleBoost" = "高音を上げる";
+"preset.trebleCut" = "高音を下げる";
+"preset.vocal" = "ボーカルを上げる";
+"preset.custom" = "手動";
+
+"permission.denied" = "FreeAudio に「システムオーディオ録音」の許可がありません。プライバシー設定を開き、リストで FreeAudio をオンにしてください。";
+"permission.request" = "アクセスを許可…";
+"permission.onboarding" = "アプリごとに音量を調整するには、FreeAudio にシステムオーディオへのアクセスを許可してください。";
+"permission.request_hint" = "「アクセスを許可」をクリックし、ダイアログで「許可」を選んでください。ダイアログが表示されない場合は、プライバシー設定を開き、リストの下の「＋」で FreeAudio を追加してください。";
+"permission.open_settings" = "プライバシー設定を開く";
+"permission.status_authorized" = "許可済み";
+"permission.status_denied" = "拒否";
+"permission.status_not_determined" = "未許可";
+"permission.status_unknown" = "確認できません";
+
+"window.settings_title" = "FreeAudio 設定";
+"app.tagline" = "アプリごとに音量・出力・イコライザを調整";
+"settings.general" = "一般";
+"settings.launch_at_login" = "ログイン時に起動";
+"settings.login_needs_approval" = "「システム設定 > 一般 > ログイン項目」で FreeAudio を許可してください。";
+"settings.remember_sound" = "再起動後にサウンド設定を復元";
+"settings.remember_sound_hint" = "出力・入力デバイス、音量、消音の状態を記憶し、FreeAudio の起動時に自動で復元します。";
+"settings.remember_sound_needs_login" = "再起動後に自動で復元するには、「ログイン時に起動」もオンにしてください。";
+"settings.devices" = "デバイス";
+"settings.lock_devices" = "選択したデバイスを固定";
+"settings.lock_devices_hint" = "FreeAudio で選択したスピーカーとマイクだけを使い、システムの自動切り替えは元に戻します。選択したデバイスが見つからないときは無効にして警告し、ほかのデバイスには切り替えません。";
+"settings.input_follows_output" = "出力デバイスに合わせてマイクも切り替える";
+"settings.input_follows_output_hint" = "ヘッドフォンなどを出力に選ぶと、そのマイクも使います。オフのときはマイクは変わらず、システムが切り替えても元に戻します。";
+"settings.new_devices_silent" = "新しいデバイスは 0% で消音";
+"settings.new_devices_silent_hint" = "初めて接続したスピーカーやマイクを 0% にして消音し、思わぬ音出しや収音を防ぎます。";
+"settings.permission" = "アクセス許可";
+"settings.audio_capture" = "システムオーディオ録音";
+"settings.permission_hint" = "FreeAudio は、音量・出力・イコライザを調整したアプリのサウンドだけを処理します。オーディオが保存・送信されることはありません。";
+"settings.saved_apps" = "保存されたアプリの設定";
+"settings.no_saved_apps" = "まだ調整したアプリはありません";
+"settings.reset_all_apps" = "すべてのアプリをリセット";
+"settings.saved_devices" = "保存されたデバイスの設定";
+"settings.version" = "バージョン %@";
+
+"summary.muted" = "消音";
+"summary.volume" = "音量 %@";
+"summary.output" = "出力先 %@";
+"summary.balance" = "バランス %@";
+"summary.eq" = "イコライザ：%@";
+"summary.multi" = "マルチ出力";
+"summary.excluded" = "ミラーしない";
+
+"error.create_process_tap" = "アプリの音声キャプチャの作成";
+"error.create_mixer_output" = "ミキサー出力の作成";
+"error.create_audio_processor" = "オーディオプロセッサの作成";
+"error.start_audio_processor" = "オーディオプロセッサの起動";
+"error.operation_failed" = "%1$@に失敗しました（%2$d）";

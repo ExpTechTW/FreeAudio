@@ -1,0 +1,134 @@
+"section.input" = "Input";
+"section.output" = "Output";
+"action.settings" = "Settings…";
+"action.quit" = "Quit FreeAudio";
+"action.mute" = "Mute";
+"action.unmute" = "Unmute";
+"action.reset" = "Reset";
+"action.rescan" = "Rescan";
+"action.expand" = "Expand";
+"action.collapse" = "Collapse";
+"a11y.mute" = "Mute %@";
+"a11y.unmute" = "Unmute %@";
+"a11y.app_settings" = "Output, balance and equalizer for %@";
+
+"language.title" = "Language";
+"language.system" = "System (%@)";
+
+"device.output_not_found" = "No output device detected";
+"device.input_not_found" = "No input device detected";
+"device.follow_system" = "System Default";
+"device.unavailable" = "%@ (not connected)";
+"device.processing" = "Output balance and equalizer";
+"device.processing_hint" = "Applies to everything playing on this device";
+
+"mic.on" = "Microphone available";
+"mic.muted" = "Microphone muted";
+"mic.unavailable" = "No microphone available";
+
+"guard.missing_title" = "“%@” Isn’t Connected";
+"guard.missing_title_two" = "“%1$@” and “%2$@” Aren’t Connected";
+"guard.output_disabled" = "Sound output is off, so nothing plays from another device. It comes back on when the device reconnects.";
+"guard.input_disabled" = "The microphone is off, so no other microphone picks up sound. It comes back on when the device reconnects.";
+"guard.both_disabled" = "Sound output and the microphone are off, and FreeAudio won’t switch to other devices. They come back on when the device reconnects.";
+"guard.use_current" = "Use “%@”";
+"guard.use_current_devices" = "Use Current Devices";
+"guard.unknown_device" = "Chosen Device";
+"guard.blocked" = "The system switched to “%1$@”, so FreeAudio switched back to your chosen “%2$@”.";
+"guard.dismiss" = "Dismiss";
+"guard.ok" = "OK";
+"guard.app_missing" = "“%@” isn’t connected, so this app’s sound is off";
+
+"multi.global" = "Global Multi-Output";
+"multi.global_subtitle" = "Mirror audio to multiple devices";
+"multi.no_other_devices" = "No other output devices";
+
+"tray.app_volume" = "Per-App Volume";
+"tray.no_playing_apps" = "No apps are playing audio";
+"conflict.warning" = "%@ is also processing other apps' audio. Running both can double or garble the sound; quit it first.";
+
+"app.settings" = "Output, balance and equalizer";
+"app.output_device" = "Output Device";
+"app.multi_output" = "Multi-Output";
+"app.exclude_global" = "Exclude from Global Multi-Output";
+"app.reset" = "Reset Settings for This App";
+
+"balance.left" = "L";
+"balance.right" = "R";
+"balance.help" = "Left/right balance";
+
+"eq.title" = "Equalizer";
+"eq.preset" = "Preset";
+"eq.preamp" = "Preamp";
+
+"preset.flat" = "Flat";
+"preset.acoustic" = "Acoustic";
+"preset.bassBoost" = "Increase Bass";
+"preset.bassCut" = "Reduce Bass";
+"preset.classical" = "Classical";
+"preset.dance" = "Dance";
+"preset.deep" = "Deep";
+"preset.electronic" = "Electronic";
+"preset.hipHop" = "Hip-Hop";
+"preset.jazz" = "Jazz";
+"preset.latin" = "Latin";
+"preset.loudness" = "Loudness";
+"preset.lounge" = "Lounge";
+"preset.piano" = "Piano";
+"preset.pop" = "Pop";
+"preset.rnb" = "R&B";
+"preset.rock" = "Rock";
+"preset.smallSpeakers" = "Small Speakers";
+"preset.spokenWord" = "Spoken Word";
+"preset.trebleBoost" = "Increase Treble";
+"preset.trebleCut" = "Reduce Treble";
+"preset.vocal" = "Increase Vocals";
+"preset.custom" = "Manual";
+
+"permission.denied" = "FreeAudio doesn't have System Audio Recording permission. Open Privacy Settings and turn on FreeAudio in the list.";
+"permission.request" = "Allow Access…";
+"permission.onboarding" = "Allow FreeAudio to access system audio so it can adjust individual apps.";
+"permission.request_hint" = "Click Allow Access, then choose Allow in the system dialog. If no dialog appears, open Privacy Settings and add FreeAudio with the + button below the list.";
+"permission.open_settings" = "Open Privacy Settings";
+"permission.status_authorized" = "Allowed";
+"permission.status_denied" = "Denied";
+"permission.status_not_determined" = "Not Allowed Yet";
+"permission.status_unknown" = "Unknown";
+
+"window.settings_title" = "FreeAudio Settings";
+"app.tagline" = "Volume, output and EQ for every app";
+"settings.general" = "General";
+"settings.launch_at_login" = "Open at Login";
+"settings.login_needs_approval" = "Allow FreeAudio in System Settings > General > Login Items.";
+"settings.remember_sound" = "Restore Sound Settings After Restart";
+"settings.remember_sound_hint" = "Remembers the output and input devices, volume and mute, and restores them when FreeAudio starts.";
+"settings.remember_sound_needs_login" = "To restore them after a restart, also turn on Open at Login.";
+"settings.devices" = "Devices";
+"settings.lock_devices" = "Keep Chosen Devices";
+"settings.lock_devices_hint" = "Uses only the speaker and microphone chosen in FreeAudio and undoes automatic switches. If a chosen device goes missing, FreeAudio turns it off and warns you instead of switching to another device.";
+"settings.input_follows_output" = "Switch Microphone with Output";
+"settings.input_follows_output_hint" = "Choosing headphones or another output also uses its microphone. When off, the microphone stays put, even if the system switches it.";
+"settings.new_devices_silent" = "Start New Devices Muted at 0%";
+"settings.new_devices_silent_hint" = "A speaker or microphone connected for the first time starts at 0% and muted, so nothing plays or listens by surprise.";
+"settings.permission" = "Permission";
+"settings.audio_capture" = "System Audio Recording";
+"settings.permission_hint" = "FreeAudio only processes the sound of apps whose volume, output or equalizer you change. Audio is never stored or sent anywhere.";
+"settings.saved_apps" = "Saved App Settings";
+"settings.no_saved_apps" = "No apps adjusted yet";
+"settings.reset_all_apps" = "Reset All Apps";
+"settings.saved_devices" = "Saved Device Settings";
+"settings.version" = "Version %@";
+
+"summary.muted" = "Muted";
+"summary.volume" = "Volume %@";
+"summary.output" = "Output to %@";
+"summary.balance" = "Balance %@";
+"summary.eq" = "EQ: %@";
+"summary.multi" = "Multi-output";
+"summary.excluded" = "Not mirrored";
+
+"error.create_process_tap" = "Creating the app audio capture";
+"error.create_mixer_output" = "Creating the mixer output";
+"error.create_audio_processor" = "Creating the audio processor";
+"error.start_audio_processor" = "Starting the audio processor";
+"error.operation_failed" = "%1$@ failed (%2$d)";

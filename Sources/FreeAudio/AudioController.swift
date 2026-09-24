@@ -1,0 +1,1107 @@
+import AppKit
+import Combine
+import CoreAudio
+
+@MainActor
+final class AudioController: ObservableObject {
+    @Published private(set) var outputDevices: [AudioDevice] = []
+    @Published private(set) var inputDevices: [AudioDevice] = []
+    @Published private(set) var outputDeviceID = AudioDeviceID(kAudioObjectUnknown)
+    @Published private(set) var inputDeviceID = AudioDeviceID(kAudioObjectUnknown)
+    @Published private(set) var outputVolume = 0.0
+    @Published private(set) var inputVolume = 0.0
+    @Published private(set) var outputMuted = false
+    @Published private(set) var inputMuted = false
+    @Published private(set) var outputHasVolume = false
+    @Published private(set) var inputHasVolume = false
+
+    /// Running apps that played recently or have saved settings.
+    @Published private(set) var apps: [AudioApp] = []
+    /// Other audio tools that are processing audio right now; running both leads to doubled sound.
+    @Published private(set) var conflictingApps: [String] = []
+    @Published private(set) var permission: AudioCapturePermission.Status
+    @Published private(set) var lastError: String?
+    @Published private(set) var state: PersistedState
+    /// Chosen devices that aren't connected; their directions are silenced until they're back.
+    @Published private(set) var missingDevices: [DeviceDirection: MissingDevice] = [:]
+    /// Devices something else switched to (e.g. macOS when headphones connect) that FreeAudio switched away from.
+    @Published private(set) var blockedDevices: [DeviceDirection: AudioDevice] = [:]
+
+    private let engineEnabled: Bool
+    private let showsWarnings: Bool
+    /// Directions whose chosen device is put back after launch; that isn't reported as a blocked switch.
+    private var restoreOnLaunch: Set<DeviceDirection> = []
+    private var lastSwitchBack: [DeviceDirection: Date] = [:]
+    /// The last default-device change per direction, to spot the microphone moving along with the output.
+    private var lastChange: [DeviceDirection: DefaultChange] = [:]
+    /// Default devices FreeAudio itself is switching to; their change notifications aren't someone else's.
+    private var switchingTo: [DeviceDirection: AudioDeviceID] = [:]
+    /// macOS moves the microphone within this long of the output changing.
+    private static let sideEffectWindow: TimeInterval = 3
+
+    private struct DefaultChange {
+        var at: Date
+        var from: AudioDeviceID
+        var byFreeAudio: Bool
+        /// Already acted on (or seen at launch, which isn't a change to act on).
+        var handled: Bool
+    }
+    private var switchBackRetry: Task<Void, Never>?
+    private var lastSilenced: [String: Date] = [:]
+    private var devicesListed = false
+    /// Output devices without mute or volume control, silenced with a tap instead.
+    private var silencers: [String: AudioRoute] = [:]
+    private var warningTask: Task<Void, Never>?
+    private var warningPanel: WarningPanel?
+    private let monitor = ProcessMonitor()
+    private var runningApps: [AudioApp] = []
+    private var ownProcesses: [AudioObjectID] = []
+    private var reRouters: [AudioObjectID] = []
+    private var lastPlayed: [String: Date] = [:]
+    private var lastAnyPlaying = Date.distantPast
+    /// Output devices each running app has played to, so its routes follow it there.
+    private var usedDevices: [String: [String]] = [:]
+    private var routes: [RouteKey: AudioRoute] = [:]
+    private var lingering: [RouteKey: Date] = [:]
+    private var retryAfter: [RouteKey: Date] = [:]
+    private var appControls: [String: StageControl] = [:]
+    private var deviceControls: [String: StageControl] = [:]
+    private var systemListeners: [PropertyListener] = []
+    private var volumeListeners: [PropertyListener] = []
+    private var observedVolumeDevices: [AudioDeviceID] = []
+    private var sampleRateListeners: [String: PropertyListener] = [:]
+    private var sampleRates: [String: Float64] = [:]
+    private var softMuteVolumes: [String: Double] = [:]
+    /// What's still to be put back after launch; cleared once applied or after `restoreWindow`.
+    private var pendingDefaults: [DeviceDirection: String] = [:]
+    private var pendingLevels: Set<String> = []
+    private let launchDate = Date()
+    private var muteCheck: Task<Void, Never>?
+    /// Bluetooth devices can take a while to connect after login.
+    private static let restoreWindow: TimeInterval = 120
+    private var lastVolumeWrite: [DeviceDirection: Date] = [:]
+    private var observers: [NSObjectProtocol] = []
+    private var timer: Timer?
+    private var saveTask: Task<Void, Never>?
+    private var deviceRefreshScheduled = false
+    private var requestingPermission = false
+    /// FreeAudio asks by itself once per launch; after that only when the user asks.
+    private var askedAutomatically = false
+    private var lastPermissionCheck = Date.distantPast
+
+    init(engineEnabled: Bool = true, showsWarnings: Bool = true) {
+        self.engineEnabled = engineEnabled
+        self.showsWarnings = showsWarnings
+        state = PersistedState.load()
+        permission = AudioCapturePermission.status
+        lastPermissionCheck = Date()
+        // Previews and tests (engine off) must not touch the user's devices.
+        if engineEnabled {
+            if state.locksDevices, !state.lockSeeded {
+                // Start the lock from the devices in use now; `choose` records them on the first refresh.
+                state.preferredDevices.removeAll()
+                state.lockSeeded = true
+            } else if state.locksDevices {
+                restoreOnLaunch = [.output, .input]
+            } else if state.remembersSound {
+                for direction in [DeviceDirection.output, .input] {
+                    pendingDefaults[direction] = state.preferredDevices[direction.key]
+                }
+            }
+            if state.remembersSound { pendingLevels = Set(state.deviceLevels.keys) }
+        }
+        refreshDevices()
+        installSystemListeners()
+        scanProcesses()
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
+        }
+        // Common modes keep it running while a warning is on screen.
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+        observers.append(NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.shutdown() }
+        })
+        // Aggregate devices don't always survive sleep.
+        observers.append(NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.rescanAfterWake() }
+        })
+    }
+
+    var defaultOutput: AudioDevice? { outputDevices.first { $0.id == outputDeviceID } }
+    var defaultInput: AudioDevice? { inputDevices.first { $0.id == inputDeviceID } }
+    enum MicrophoneState { case on, muted, unavailable }
+
+    /// For the menu bar icon: no usable microphone (none at all, or the chosen one is missing), muted, or on.
+    var microphoneState: MicrophoneState {
+        if inputDevices.isEmpty || missingDevices[.input] != nil { return .unavailable }
+        return inputMuted ? .muted : .on
+    }
+
+    func isDisabled(_ direction: DeviceDirection) -> Bool { missingDevices[direction] != nil }
+
+    #if DEBUG
+    /// Lets layout snapshots and tests show a missing device without touching real ones.
+    func previewMissing(_ direction: DeviceDirection, name: String, warn: Bool = false) {
+        missingDevices[direction] = MissingDevice(uid: "preview", name: name)
+        if warn { scheduleWarning() }
+    }
+
+    func previewReconnected(_ direction: DeviceDirection) {
+        missingDevices[direction] = nil
+        dismissWarning()
+    }
+
+    func previewBlocked(_ direction: DeviceDirection, _ device: AudioDevice) {
+        blockedDevices[direction] = device
+    }
+    #endif
+
+    func deviceName(uid: String) -> String {
+        outputDevices.first { $0.uid == uid }?.name ?? state.deviceNames[uid] ?? uid
+    }
+
+    // MARK: - Devices
+
+    /// Picking a device in FreeAudio makes it the chosen one.
+    func select(_ device: AudioDevice, _ direction: DeviceDirection) {
+        choose(device, direction)
+        setDefault(device.id, direction)
+        refreshDevices()
+    }
+
+    private func setDefault(_ id: AudioDeviceID, _ direction: DeviceDirection) {
+        guard AudioDevices.defaultDevice(direction) != id else { return }
+        switchingTo[direction] = id
+        AudioDevices.setDefault(id, direction)
+    }
+
+    /// Stops waiting for a missing device and uses the one macOS picked instead.
+    func useCurrentDevice(_ direction: DeviceDirection) {
+        let devices = direction == .output ? outputDevices : inputDevices
+        guard let current = devices.first(where: { $0.id == AudioDevices.defaultDevice(direction) }) else { return }
+        select(current, direction)
+    }
+
+    func setVolume(_ volume: Double, _ direction: DeviceDirection) {
+        guard let device = direction == .output ? defaultOutput : defaultInput else { return }
+        let volume = volume.clamped(to: 0...1)
+        // A slider can report its current value again, e.g. when it appears; that isn't a change.
+        guard abs(volume - (direction == .output ? outputVolume : inputVolume)) > 0.0005 else { return }
+        if direction == .output { outputVolume = volume } else { inputVolume = volume }
+        lastVolumeWrite[direction] = Date()
+        AudioDevices.setVolume(volume, device.id, direction)
+        // Like the system controls, moving the slider un-mutes.
+        if volume > 0, direction == .output ? outputMuted : inputMuted {
+            softMuteVolumes[device.uid] = nil
+            setMuted(false, direction)
+        }
+    }
+
+    func toggleMute(_ direction: DeviceDirection) {
+        setMuted(!(direction == .output ? outputMuted : inputMuted), direction)
+    }
+
+    private func setMuted(_ muted: Bool, _ direction: DeviceDirection) {
+        guard let device = direction == .output ? defaultOutput : defaultInput else { return }
+        if AudioDevices.canMute(device.id, direction) {
+            AudioDevices.setMuted(muted, device.id, direction)
+        } else if muted {
+            // Devices without a mute control are muted by parking the volume at zero.
+            softMuteVolumes[device.uid] = AudioDevices.volume(device.id, direction) ?? 1
+            AudioDevices.setVolume(0, device.id, direction)
+        } else if let volume = softMuteVolumes.removeValue(forKey: device.uid) {
+            AudioDevices.setVolume(volume, device.id, direction)
+        }
+        // Muting in FreeAudio is the user's choice, even while the speech service is listening.
+        muteCheck?.cancel()
+        recordMute(muted, device, direction)
+        refreshVolumes()
+    }
+
+    func refreshDevices() {
+        let outputs = AudioDevices.list(.output)
+        let inputs = AudioDevices.list(.input)
+        if engineEnabled { quietNewDevices(outputs: outputs, inputs: inputs) }
+        if outputs != outputDevices { outputDevices = outputs }
+        if inputs != inputDevices { inputDevices = inputs }
+        restoreRememberedSound()
+        for direction in [DeviceDirection.output, .input] {
+            let current = AudioDevices.defaultDevice(direction)
+            let previous = direction == .output ? outputDeviceID : inputDeviceID
+            guard current != previous else { continue }
+            if direction == .output { outputDeviceID = current } else { inputDeviceID = current }
+            let ours = switchingTo[direction] == current
+            switchingTo[direction] = nil
+            lastChange[direction] = DefaultChange(at: Date(), from: previous, byFreeAudio: ours, handled: !devicesListed)
+            if !state.locksDevices { rememberDefault(direction, previous: previous) }
+        }
+        devicesListed = true
+        let keptMicrophone = engineEnabled && followOrKeepMicrophone()
+        if engineEnabled, state.locksDevices {
+            enforceDeviceLock(.output)
+            // The microphone was just put back; the lock has nothing to report about it.
+            if !keptMicrophone { enforceDeviceLock(.input) }
+        }
+        // With nothing remembered yet, the devices in use now are the ones to come back to.
+        for (direction, device) in [(DeviceDirection.output, defaultOutput), (.input, defaultInput)] {
+            guard state.remembersSound || state.locksDevices, pendingDefaults[direction] == nil,
+                  state.preferredDevices[direction.key] == nil, let device else { continue }
+            choose(device, direction)
+        }
+        for direction in [DeviceDirection.output, .input] where missingDevices[direction] == nil {
+            releaseSilenced(direction)
+        }
+        // A blocked device that's been disconnected needs no notice any more.
+        for (direction, device) in blockedDevices where !(direction == .output ? outputs : inputs).contains(where: { $0.uid == device.uid }) {
+            blockedDevices[direction] = nil
+        }
+        for id in state.apps.keys { configureAppControl(id) }
+        refreshVolumes()
+        installVolumeListeners()
+        reconcileRoutes()
+    }
+
+    // MARK: - Device lock
+
+    func setLocksDevices(_ on: Bool) {
+        state.locksDevices = on
+        restoreOnLaunch.removeAll()
+        if on {
+            for (direction, device) in [(DeviceDirection.output, defaultOutput), (.input, defaultInput)] {
+                if let device, state.preferredDevices[direction.key] == nil { choose(device, direction) }
+            }
+        } else {
+            for direction in [DeviceDirection.output, .input] {
+                missingDevices[direction] = nil
+                releaseSilenced(direction)
+            }
+            dismissWarning()
+            if !state.remembersSound { state.preferredDevices.removeAll() }
+        }
+        scheduleSave()
+        refreshDevices()
+    }
+
+    /// Keeps the default device on the chosen one; never replaces a missing one.
+    private func enforceDeviceLock(_ direction: DeviceDirection) {
+        guard let chosenUID = state.preferredDevices[direction.key] else { return }
+        let devices = direction == .output ? outputDevices : inputDevices
+        let currentID = direction == .output ? outputDeviceID : inputDeviceID
+        let current = devices.first { $0.id == currentID }
+        let decision = DeviceLock.decide(chosenUID: chosenUID, devices: devices, currentID: currentID)
+        let wasMissing = missingDevices[direction] != nil
+        if decision != .missing, wasMissing {
+            missingDevices[direction] = nil
+            dismissWarning()
+        }
+        switch decision {
+        case .keep:
+            restoreOnLaunch.remove(direction)
+        case .switchBack(let id):
+            // Going back after launch or a reconnect is expected; a switch made elsewhere is reported.
+            if !restoreOnLaunch.contains(direction), !wasMissing, let current { blockedDevices[direction] = current }
+            restoreOnLaunch.remove(direction)
+            switchBack(direction, to: id)
+        case .missing:
+            if missingDevices[direction] == nil {
+                missingDevices[direction] = MissingDevice(uid: chosenUID, name: state.deviceNames[chosenUID] ?? L("guard.unknown_device"))
+                scheduleWarning()
+            }
+            // Whatever macOS switched to in its place stays silent.
+            if let current { silence(current, direction) }
+        }
+    }
+
+    /// macOS moves the microphone to a headset when the headset becomes the output. By default the microphone
+    /// stays where it was; with "switch microphone with output" on, the output's own microphone is chosen.
+    /// Returns whether the microphone was just put back.
+    private func followOrKeepMicrophone() -> Bool {
+        let now = Date()
+        guard let output = lastChange[.output], now.timeIntervalSince(output.at) < Self.sideEffectWindow else { return false }
+        if state.inputFollowsOutput {
+            // Once per output change, whoever made it.
+            guard !output.handled else { return false }
+            lastChange[.output]?.handled = true
+            if let device = defaultOutput, let paired = AudioDevices.pairedInput(for: device, among: inputDevices) {
+                choose(paired, .input)
+                setDefault(paired.id, .input)
+            }
+            return false
+        }
+        guard let input = lastChange[.input], !input.handled, !input.byFreeAudio,
+              abs(input.at.timeIntervalSince(output.at)) < Self.sideEffectWindow,
+              let previous = inputDevices.first(where: { $0.id == input.from }) else { return false }
+        lastChange[.input]?.handled = true
+        blockedDevices[.input] = nil
+        if state.locksDevices || state.remembersSound { choose(previous, .input) }
+        setDefault(previous.id, .input)
+        return true
+    }
+
+    /// A speaker or microphone FreeAudio has never seen starts at 0% and muted, so it can't play or listen
+    /// by surprise. Everything connected the first time FreeAudio runs is taken as already known.
+    private func quietNewDevices(outputs: [AudioDevice], inputs: [AudioDevice]) {
+        let seeding = state.knownDevices == nil
+        var known = Set(state.knownDevices ?? [])
+        if seeding {
+            // Devices this or an earlier version already dealt with aren't new either.
+            known.formUnion(state.deviceLevels.keys)
+            known.formUnion(state.silencedLevels.keys)
+            for (direction, uid) in state.preferredDevices { known.insert("\(direction):\(uid)") }
+        }
+        let before = known.count
+        for (direction, devices) in [(DeviceDirection.output, outputs), (.input, inputs)] {
+            for device in devices {
+                guard known.insert(levelKey(device, direction)).inserted, !seeding, state.newDevicesSilent else { continue }
+                if AudioDevices.canSetVolume(device.id, direction) { AudioDevices.setVolume(0, device.id, direction) }
+                if AudioDevices.canMute(device.id, direction) { AudioDevices.setMuted(true, device.id, direction) }
+            }
+        }
+        guard seeding || known.count != before else { return }
+        state.knownDevices = known.sorted()
+        scheduleSave()
+    }
+
+    func setInputFollowsOutput(_ on: Bool) {
+        state.inputFollowsOutput = on
+        scheduleSave()
+    }
+
+    func setNewDevicesSilent(_ on: Bool) {
+        state.newDevicesSilent = on
+        scheduleSave()
+    }
+
+    private func switchBack(_ direction: DeviceDirection, to id: AudioDeviceID) {
+        let wait = DeviceLock.minimumSwitchInterval - Date().timeIntervalSince(lastSwitchBack[direction] ?? .distantPast)
+        guard wait <= 0 else {
+            // Something keeps switching away: try again shortly instead of spinning.
+            switchBackRetry?.cancel()
+            switchBackRetry = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(wait))
+                guard !Task.isCancelled else { return }
+                self?.refreshDevices()
+            }
+            return
+        }
+        lastSwitchBack[direction] = Date()
+        setDefault(id, direction)
+    }
+
+    func dismissBlocked(_ direction: DeviceDirection) {
+        blockedDevices[direction] = nil
+    }
+
+    private func choose(_ device: AudioDevice, _ direction: DeviceDirection) {
+        restoreOnLaunch.remove(direction)
+        pendingDefaults[direction] = nil
+        blockedDevices[direction] = nil
+        state.deviceNames[device.uid] = device.name
+        if state.remembersSound || state.locksDevices { state.preferredDevices[direction.key] = device.uid }
+        if missingDevices[direction] != nil {
+            missingDevices[direction] = nil
+            releaseSilenced(direction)
+            dismissWarning()
+        }
+        scheduleSave()
+    }
+
+    /// Mutes a stand-in device, remembering how it was. Also re-mutes it when something else turns it back on.
+    private func silence(_ device: AudioDevice, _ direction: DeviceDirection) {
+        let key = levelKey(device, direction)
+        if state.silencedLevels[key] == nil {
+            state.silencedLevels[key] = DeviceLevel(
+                volume: AudioDevices.volume(device.id, direction) ?? 1,
+                muted: AudioDevices.isMuted(device.id, direction)
+            )
+            scheduleSave()
+        }
+        // Don't get into a tug of war with whatever keeps unmuting it.
+        guard Date().timeIntervalSince(lastSilenced[key] ?? .distantPast) > 0.25 else { return }
+        if AudioDevices.canMute(device.id, direction) {
+            guard !AudioDevices.isMuted(device.id, direction) else { return }
+            AudioDevices.setMuted(true, device.id, direction)
+        } else if AudioDevices.canSetVolume(device.id, direction) {
+            guard (AudioDevices.volume(device.id, direction) ?? 0) > 0 else { return }
+            AudioDevices.setVolume(0, device.id, direction)
+        } else if direction == .output, silencers[device.uid] == nil, !ownProcesses.isEmpty {
+            // No mute or volume control (e.g. HDMI): mute everything playing to it with a tap.
+            let control = StageControl()
+            control.update(gainLeft: 0, gainRight: 0, eq: EQSettings())
+            let spec = RouteSpec(key: RouteKey(source: .system, deviceUID: device.uid), processes: ownProcesses.sorted(), tapDeviceUID: device.uid, mute: .muted)
+            silencers[device.uid] = try? AudioRoute(spec: spec, appControl: nil, deviceControl: control)
+        }
+        lastSilenced[key] = Date()
+    }
+
+    /// Puts back every device silenced for a direction, once its chosen device is back or replaced by the user.
+    private func releaseSilenced(_ direction: DeviceDirection) {
+        let prefix = direction.key + ":"
+        let devices = direction == .output ? outputDevices : inputDevices
+        for (key, original) in state.silencedLevels where key.hasPrefix(prefix) {
+            let uid = String(key.dropFirst(prefix.count))
+            // A device that's gone is put back when it returns.
+            guard let device = devices.first(where: { $0.uid == uid }) else { continue }
+            if AudioDevices.canMute(device.id, direction) {
+                AudioDevices.setMuted(original.muted, device.id, direction)
+            } else if AudioDevices.canSetVolume(device.id, direction) {
+                AudioDevices.setVolume(original.volume, device.id, direction)
+            }
+            state.silencedLevels[key] = nil
+            scheduleSave()
+        }
+        if direction == .output {
+            silencers.values.forEach { $0.stop() }
+            silencers.removeAll()
+        }
+    }
+
+    // MARK: - Missing device warning
+
+    private func scheduleWarning() {
+        guard showsWarnings else { return }
+        // Give a device that blinked out (Bluetooth, waking from sleep) a moment, and more right after login.
+        let delay: TimeInterval = Date().timeIntervalSince(launchDate) < 30 ? 15 : 3
+        warningTask?.cancel()
+        warningTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            self?.presentWarning()
+        }
+    }
+
+    private func presentWarning() {
+        let pending = missingDevices.filter { !$0.value.warned }
+        guard !pending.isEmpty else { return }
+        for direction in pending.keys { missingDevices[direction]?.warned = true }
+        warningPanel?.close()
+
+        let output = pending[.output], input = pending[.input]
+        let title: String
+        switch (output, input) {
+        case let (output?, input?) where output.name != input.name:
+            title = LF("guard.missing_title_two", output.name, input.name)
+        default:
+            title = LF("guard.missing_title", (output ?? input)?.name ?? "")
+        }
+        let text = L(output != nil && input != nil ? "guard.both_disabled" : output != nil ? "guard.output_disabled" : "guard.input_disabled")
+        var buttons: [(title: String, action: () -> Void)] = [(L("guard.ok"), {})]
+        let directions = Array(pending.keys)
+        let useCurrent: () -> Void = { [weak self] in
+            for direction in directions where self?.missingDevices[direction] != nil { self?.useCurrentDevice(direction) }
+        }
+        if pending.count == 1, let stand = output != nil ? defaultOutput : defaultInput {
+            buttons.append((LF("guard.use_current", stand.name), useCurrent))
+        } else if (output == nil || defaultOutput != nil) && (input == nil || defaultInput != nil) {
+            buttons.append((L("guard.use_current_devices"), useCurrent))
+        }
+        let panel = WarningPanel(title: title, text: text, buttons: buttons) { [weak self] in
+            self?.warningPanel = nil
+        }
+        warningPanel = panel
+        panel.show()
+    }
+
+    /// Closes the warning once nothing is missing any more.
+    private func dismissWarning() {
+        guard missingDevices.isEmpty else { return }
+        warningTask?.cancel()
+        warningPanel?.close()
+        warningPanel = nil
+    }
+
+    // MARK: - Remembered sound
+
+    func setRemembersSound(_ on: Bool) {
+        state.remembersSound = on
+        pendingDefaults.removeAll()
+        pendingLevels.removeAll()
+        if on {
+            for (direction, device) in [(DeviceDirection.output, defaultOutput), (.input, defaultInput)] {
+                if let device, state.preferredDevices[direction.key] == nil { choose(device, direction) }
+            }
+            refreshVolumes()
+        } else {
+            // The device lock still needs to know the chosen devices.
+            if !state.locksDevices { state.preferredDevices.removeAll() }
+            state.deviceLevels.removeAll()
+        }
+        scheduleSave()
+    }
+
+    /// After a restart, puts back the devices, volumes and mutes FreeAudio saw last.
+    private func restoreRememberedSound() {
+        guard !pendingDefaults.isEmpty || !pendingLevels.isEmpty else { return }
+        guard Date().timeIntervalSince(launchDate) < Self.restoreWindow else {
+            pendingDefaults.removeAll()
+            pendingLevels.removeAll()
+            return
+        }
+        for direction in [DeviceDirection.output, .input] {
+            let devices = direction == .output ? outputDevices : inputDevices
+            if let uid = pendingDefaults[direction], let device = devices.first(where: { $0.uid == uid }) {
+                pendingDefaults[direction] = nil
+                setDefault(device.id, direction)
+            }
+            for device in devices {
+                let key = levelKey(device, direction)
+                guard pendingLevels.remove(key) != nil, let level = state.deviceLevels[key] else { continue }
+                if AudioDevices.canSetVolume(device.id, direction) { AudioDevices.setVolume(level.volume, device.id, direction) }
+                if AudioDevices.canMute(device.id, direction) { AudioDevices.setMuted(level.muted, device.id, direction) }
+            }
+        }
+    }
+
+    /// Records the user's device choice. A switch forced by the previous device going away isn't a choice.
+    private func rememberDefault(_ direction: DeviceDirection, previous: AudioDeviceID) {
+        let devices = direction == .output ? outputDevices : inputDevices
+        let current = direction == .output ? outputDeviceID : inputDeviceID
+        guard state.remembersSound,
+              devices.contains(where: { $0.id == previous }),
+              let device = devices.first(where: { $0.id == current }) else { return }
+        // Choosing a device yourself during the restore window beats restoring the old one.
+        pendingDefaults[direction] = nil
+        guard state.preferredDevices[direction.key] != device.uid else { return }
+        state.preferredDevices[direction.key] = device.uid
+        scheduleSave()
+    }
+
+    /// Remembers a default device's volume and mute, once anything saved for it has been put back.
+    private func rememberLevel(_ device: AudioDevice?, _ direction: DeviceDirection, volume: Double, muted: Bool) {
+        guard state.remembersSound, let device else { return }
+        let key = levelKey(device, direction)
+        guard !pendingLevels.contains(key) else { return }
+        var level = DeviceLevel(volume: volume, muted: muted)
+        if direction == .input, let saved = state.deviceLevels[key], saved.muted != muted {
+            // Wait before believing a microphone mute change; see `settleMicrophoneMute`.
+            level.muted = saved.muted
+            settleMicrophoneMute(device)
+        }
+        guard state.deviceLevels[key] != level else { return }
+        state.deviceLevels[key] = level
+        scheduleSave()
+    }
+
+    /// macOS's speech service unmutes the microphone while it listens during playback and mutes it again
+    /// afterwards. That isn't the user's choice, so a mute change only counts once the service is idle.
+    private func settleMicrophoneMute(_ device: AudioDevice) {
+        muteCheck?.cancel()
+        muteCheck = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard let self, !Task.isCancelled, !Self.systemIsListening else { return }
+            recordMute(AudioDevices.isMuted(device.id, .input), device, .input)
+        }
+    }
+
+    private func recordMute(_ muted: Bool, _ device: AudioDevice, _ direction: DeviceDirection) {
+        let key = levelKey(device, direction)
+        guard state.remembersSound, var level = state.deviceLevels[key], level.muted != muted else { return }
+        level.muted = muted
+        state.deviceLevels[key] = level
+        scheduleSave()
+    }
+
+    private static var systemIsListening: Bool {
+        CA.array(CA.system, CA.address(kAudioHardwarePropertyProcessObjectList), as: AudioObjectID.self).contains { process in
+            CA.value(process, CA.address(kAudioProcessPropertyIsRunningInput), fallback: UInt32(0)) != 0
+                && CA.string(process, CA.address(kAudioProcessPropertyBundleID)) == "com.apple.CoreSpeech"
+        }
+    }
+
+    private func levelKey(_ device: AudioDevice, _ direction: DeviceDirection) -> String { "\(direction.key):\(device.uid)" }
+
+    private func refreshVolumes() {
+        let now = Date()
+        for direction in [DeviceDirection.output, .input] {
+            let device = direction == .output ? defaultOutput : defaultInput
+            let hasVolume = device.map { AudioDevices.canSetVolume($0.id, direction) } ?? false
+            let volume = device.flatMap { AudioDevices.volume($0.id, direction) } ?? (device == nil ? 0 : 1)
+            if engineEnabled, state.locksDevices, missingDevices[direction] != nil, let device {
+                silence(device, direction)
+            }
+            let muted = device.map { muteState($0, direction) } ?? false
+            // A stand-in's silence is FreeAudio's doing, not a level to remember.
+            let standIn = device.map { state.silencedLevels[levelKey($0, direction)] != nil } ?? false
+            if !standIn, hasVolume || device.map({ AudioDevices.canMute($0.id, direction) }) == true {
+                rememberLevel(device, direction, volume: volume, muted: muted)
+            }
+            // Ignore read-backs while the user is dragging, so the slider doesn't jitter.
+            let settling = now.timeIntervalSince(lastVolumeWrite[direction] ?? .distantPast) < 0.4
+            switch direction {
+            case .output:
+                if outputHasVolume != hasVolume { outputHasVolume = hasVolume }
+                if !settling, outputVolume != volume { outputVolume = volume }
+                if outputMuted != muted { outputMuted = muted }
+            case .input:
+                if inputHasVolume != hasVolume { inputHasVolume = hasVolume }
+                if !settling, inputVolume != volume { inputVolume = volume }
+                if inputMuted != muted { inputMuted = muted }
+            }
+        }
+    }
+
+    private func muteState(_ device: AudioDevice, _ direction: DeviceDirection) -> Bool {
+        if AudioDevices.canMute(device.id, direction) { return AudioDevices.isMuted(device.id, direction) }
+        if softMuteVolumes[device.uid] != nil, (AudioDevices.volume(device.id, direction) ?? 0) > 0 {
+            softMuteVolumes[device.uid] = nil
+        }
+        return softMuteVolumes[device.uid] != nil
+    }
+
+    private func installSystemListeners() {
+        let deviceSelectors = [
+            kAudioHardwarePropertyDevices,
+            kAudioHardwarePropertyDefaultOutputDevice,
+            kAudioHardwarePropertyDefaultInputDevice,
+        ]
+        systemListeners = deviceSelectors.compactMap { selector in
+            PropertyListener(CA.system, CA.address(selector)) { [weak self] in self?.scheduleDeviceRefresh() }
+        }
+        if let processes = PropertyListener(CA.system, CA.address(kAudioHardwarePropertyProcessObjectList), handler: { [weak self] in
+            self?.scanProcesses()
+        }) {
+            systemListeners.append(processes)
+        }
+    }
+
+    private func installVolumeListeners() {
+        let devices = [(defaultOutput, DeviceDirection.output), (defaultInput, .input)]
+        let ids = devices.map { $0.0?.id ?? AudioDeviceID(kAudioObjectUnknown) }
+        guard ids != observedVolumeDevices else { return }
+        observedVolumeDevices = ids
+        volumeListeners = devices.flatMap { device, direction -> [PropertyListener] in
+            guard let device else { return [] }
+            return AudioDevices.observedAddresses(direction).compactMap {
+                PropertyListener(device.id, $0) { [weak self] in self?.refreshVolumes() }
+            }
+        }
+    }
+
+    private func scheduleDeviceRefresh() {
+        guard !deviceRefreshScheduled else { return }
+        deviceRefreshScheduled = true
+        Task { @MainActor [weak self] in
+            self?.deviceRefreshScheduled = false
+            self?.refreshDevices()
+        }
+    }
+
+    // MARK: - Apps
+
+    func settings(for app: AudioApp) -> AppAudioSettings { state.apps[app.id] ?? AppAudioSettings() }
+
+    func updateSettings(for app: AudioApp, _ change: (inout AppAudioSettings) -> Void) {
+        var settings = settings(for: app)
+        change(&settings)
+        setSettings(settings, forApp: app.id, name: app.name)
+    }
+
+    func resetSettings(forApp id: String) {
+        setSettings(AppAudioSettings(), forApp: id, name: nil)
+    }
+
+    func resetAllAppSettings() {
+        for id in state.apps.keys { resetSettings(forApp: id) }
+    }
+
+    private func setSettings(_ settings: AppAudioSettings, forApp id: String, name: String?) {
+        guard settings != (state.apps[id] ?? AppAudioSettings()) else { return }
+        if settings.isDefault {
+            state.apps[id] = nil
+            state.appNames[id] = nil
+        } else {
+            state.apps[id] = settings
+            if let name { state.appNames[id] = name }
+        }
+        configureAppControl(id)
+        reconcileRoutes()
+        scheduleSave()
+    }
+
+    func setPerAppEnabled(_ enabled: Bool) {
+        state.perAppEnabled = enabled
+        reconcileRoutes()
+        scheduleSave()
+    }
+
+    private func scanProcesses() {
+        let snapshot = monitor.scan()
+        let now = Date()
+        ownProcesses = snapshot.ownProcesses
+        reRouters = snapshot.reRouters
+        if snapshot.conflictingApps != conflictingApps { conflictingApps = snapshot.conflictingApps }
+        if snapshot.anyPlaying { lastAnyPlaying = now }
+        for app in snapshot.apps where app.isPlaying { lastPlayed[app.id] = now }
+        runningApps = snapshot.apps
+        let running = Set(snapshot.apps.map(\.id))
+        lastPlayed = lastPlayed.filter { running.contains($0.key) }
+        usedDevices = usedDevices.filter { running.contains($0.key) }
+        let visible = snapshot.apps.filter {
+            // Paused apps stay listed for a while, so their row doesn't vanish mid-adjustment.
+            state.apps[$0.id] != nil || now.timeIntervalSince(lastPlayed[$0.id] ?? .distantPast) < 600
+        }
+        if visible != apps { apps = visible }
+        reconcileRoutes()
+    }
+
+    /// Output devices the app plays to, remembered while it runs.
+    private func devicesInUse(_ app: AudioApp) -> [String] {
+        var uids = usedDevices[app.id] ?? []
+        let address = CA.address(kAudioProcessPropertyDevices, scope: kAudioObjectPropertyScopeOutput)
+        for process in app.processes {
+            for device in CA.array(process, address, as: AudioObjectID.self) {
+                guard let uid = outputDevices.first(where: { $0.id == device })?.uid, !uids.contains(uid) else { continue }
+                uids.append(uid)
+            }
+        }
+        usedDevices[app.id] = uids
+        return uids
+    }
+
+    // MARK: - Output processing and multi-output
+
+    func deviceSettings(for uid: String) -> DeviceAudioSettings { state.devices[uid] ?? DeviceAudioSettings() }
+
+    func updateDeviceSettings(for device: AudioDevice, _ change: (inout DeviceAudioSettings) -> Void) {
+        var settings = deviceSettings(for: device.uid)
+        change(&settings)
+        setDeviceSettings(settings, uid: device.uid, name: device.name)
+    }
+
+    func resetDeviceSettings(uid: String) {
+        setDeviceSettings(DeviceAudioSettings(), uid: uid, name: nil)
+    }
+
+    private func setDeviceSettings(_ settings: DeviceAudioSettings, uid: String, name: String?) {
+        guard settings != deviceSettings(for: uid) else { return }
+        state.devices[uid] = settings.isDefault ? nil : settings
+        if let name { state.deviceNames[uid] = name }
+        configureDeviceControl(uid)
+        reconcileRoutes()
+        scheduleSave()
+    }
+
+    func setGlobalMultiOutput(_ enabled: Bool) {
+        state.globalMultiOutput = enabled
+        reconcileRoutes()
+        scheduleSave()
+    }
+
+    func isGlobalOutput(_ device: AudioDevice) -> Bool { state.globalOutputUIDs.contains(device.uid) }
+
+    func toggleGlobalOutput(_ device: AudioDevice) {
+        if let index = state.globalOutputUIDs.firstIndex(of: device.uid) {
+            state.globalOutputUIDs.remove(at: index)
+        } else {
+            state.globalOutputUIDs.append(device.uid)
+            state.deviceNames[device.uid] = device.name
+        }
+        reconcileRoutes()
+        scheduleSave()
+    }
+
+    // MARK: - Permission
+
+    func openPrivacySettings() { AudioCapturePermission.openSystemSettings() }
+
+    private func refreshPermission() {
+        lastPermissionCheck = Date()
+        let status = AudioCapturePermission.status
+        guard status != permission else { return }
+        permission = status
+        reconcileRoutes()
+    }
+
+    /// Shows the macOS prompt for System Audio Recording. Without an answer FreeAudio
+    /// isn't listed in Privacy & Security, so the user can't turn it on there either.
+    func requestPermission() {
+        guard !requestingPermission else { return }
+        requestingPermission = true
+        // Bring the menu bar app forward so the prompt isn't left behind other windows.
+        NSApp.activate()
+        let asked = AudioCapturePermission.request { [weak self] granted in
+            Task { @MainActor [weak self] in self?.finishPermissionRequest(granted: granted) }
+        }
+        if !asked {
+            // Without the prompt API, macOS asks by itself when a route starts.
+            requestingPermission = false
+            permission = .unknown
+            reconcileRoutes()
+        }
+    }
+
+    private func finishPermissionRequest(granted: Bool) {
+        requestingPermission = false
+        lastPermissionCheck = Date()
+        permission = granted ? .authorized : AudioCapturePermission.status
+        reconcileRoutes()
+    }
+
+    // MARK: - Routing
+
+    /// Re-reads devices, apps and permission, and rebuilds every route.
+    func rescan() {
+        routes.values.forEach { $0.stop() }
+        routes.removeAll()
+        lingering.removeAll()
+        retryAfter.removeAll()
+        lastError = nil
+        permission = AudioCapturePermission.status
+        lastPermissionCheck = Date()
+        refreshDevices()
+        scanProcesses()
+    }
+
+    private func rescanAfterWake() {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            self?.rescan()
+        }
+    }
+
+    func shutdown() {
+        saveTask?.cancel()
+        state.save()
+        timer?.invalidate()
+        routes.values.forEach { $0.stop() }
+        routes.removeAll()
+    }
+
+    private func tick() {
+        let now = Date()
+        if now.timeIntervalSince(lastPermissionCheck) > (permission == .authorized ? 30 : 2) { refreshPermission() }
+        scanProcesses()
+        var stalled = false
+        for (key, route) in routes {
+            let activity = route.poll()
+            guard activity.rendering else { continue }
+            let lastActive = switch key.source {
+            case .app(let id): lastPlayed[id] ?? .distantPast
+            case .system: lastAnyPlaying
+            }
+            if now.timeIntervalSince(lastActive) > 15 {
+                // Let idle routes stop so output devices can sleep; they restart with the next audio.
+                route.rearm()
+            } else if now.timeIntervalSince(lastActive) < 2, let silence = activity.silentFor, silence > 8 {
+                // A tap can stop delivering audio until it's rebuilt, which would leave its app muted.
+                // A fresh route only re-arms this check once it hears sound, so real silence costs one rebuild.
+                route.stop()
+                routes[key] = nil
+                stalled = true
+            }
+        }
+        if stalled { reconcileRoutes() }
+    }
+
+    private func reconcileRoutes() {
+        guard engineEnabled else { return }
+        var desired = desiredRoutes()
+        if !desired.isEmpty {
+            switch permission {
+            case .authorized, .unknown:
+                break
+            case .notDetermined:
+                if !askedAutomatically {
+                    askedAutomatically = true
+                    requestPermission()
+                }
+                desired = [:]
+            case .denied:
+                desired = [:]
+            }
+        }
+
+        let now = Date()
+        var failure: String?
+        for (key, spec) in desired {
+            lingering[key] = nil
+            if let route = routes[key] {
+                if route.spec == spec { continue }
+                if route.spec.canUpdateInPlace(to: spec), route.updateProcesses(spec.processes) { continue }
+                route.stop()
+                routes[key] = nil
+            }
+            if let retry = retryAfter[key], retry > now { continue }
+            do {
+                routes[key] = try AudioRoute(
+                    spec: spec,
+                    appControl: appControl(for: key),
+                    deviceControl: deviceControl(for: key.deviceUID)
+                )
+                retryAfter[key] = nil
+            } catch {
+                retryAfter[key] = now.addingTimeInterval(5)
+                failure = error.localizedDescription
+            }
+        }
+
+        // Old routes go only after the new ones are up, so audio is never left unprocessed in between.
+        let appsWithRoutes = Set(desired.keys.compactMap { key -> String? in
+            if case .app(let id) = key.source { return id }
+            return nil
+        })
+        for (key, route) in routes where desired[key] == nil {
+            if keepsLingering(key, appsWithRoutes: appsWithRoutes, now: now) { continue }
+            route.stop()
+            routes[key] = nil
+            lingering[key] = nil
+        }
+        retryAfter = retryAfter.filter { desired[$0.key] != nil }
+        if let failure { lastError = failure } else if retryAfter.isEmpty, lastError != nil { lastError = nil }
+        updateSampleRateListeners()
+    }
+
+    /// A route whose app just went back to default settings stays briefly,
+    /// so dragging a slider across 100% doesn't tear it down and rebuild it.
+    private func keepsLingering(_ key: RouteKey, appsWithRoutes: Set<String>, now: Date) -> Bool {
+        guard case .app(let id) = key.source, !appsWithRoutes.contains(id),
+              permission != .denied, runningApps.contains(where: { $0.id == id }) else { return false }
+        let deadline = lingering[key] ?? now.addingTimeInterval(1.5)
+        lingering[key] = deadline
+        return deadline > now
+    }
+
+    private func desiredRoutes() -> [RouteKey: RouteSpec] {
+        // Without knowing our own process, a system tap could capture FreeAudio's output.
+        guard let defaultUID = defaultOutput?.uid, !ownProcesses.isEmpty else { return [:] }
+        let present = Set(outputDevices.map(\.uid))
+        let globalExtras = state.globalMultiOutput
+            ? state.globalOutputUIDs.filter { $0 != defaultUID && present.contains($0) }
+            : []
+
+        var specs: [RouteKey: RouteSpec] = [:]
+        func add(_ source: RouteKey.Source, to deviceUID: String, tapping processes: [AudioObjectID], on tapDevice: String?, mute: CATapMuteBehavior) {
+            let key = RouteKey(source: source, deviceUID: deviceUID)
+            // A device silenced as a stand-in for a missing one gets nothing from FreeAudio either.
+            guard specs[key] == nil, silencers[deviceUID] == nil else { return }
+            specs[key] = RouteSpec(key: key, processes: processes.sorted(), tapDeviceUID: tapDevice, mute: mute)
+        }
+
+        // Apps whose audio FreeAudio renders itself, and apps kept out of the system-wide mirror.
+        var takenOver: [AudioObjectID] = []
+        var unmirrored: [AudioObjectID] = []
+        if state.perAppEnabled {
+            for app in runningApps {
+                guard let settings = state.apps[app.id] else { continue }
+                let source = RouteKey.Source.app(app.id)
+                let chosen = settings.outputUID.flatMap { present.contains($0) ? $0 : nil }
+                let extras = settings.multiOutput ? settings.extraOutputUIDs.filter(present.contains) : []
+                // The app's own output stays muted for as long as FreeAudio renders it, so mute and
+                // volume are only gain changes: instant, and nothing leaks when playback starts.
+                if let chosen {
+                    // Moves all of the app's audio to the chosen device.
+                    add(source, to: chosen, tapping: app.processes, on: nil, mute: .muted)
+                    for uid in extras { add(source, to: uid, tapping: app.processes, on: nil, mute: .unmuted) }
+                    takenOver += app.processes
+                } else if appOutputMissing(app.id) {
+                    // Its device isn't connected: keep the app silent instead of playing it elsewhere.
+                    add(source, to: defaultUID, tapping: app.processes, on: nil, mute: .muted)
+                    takenOver += app.processes
+                } else {
+                    // Follows the system: processes the app's audio where it already plays,
+                    // and copies what reaches the default device to the extra outputs.
+                    if settings.needsProcessing {
+                        for uid in [defaultUID] + devicesInUse(app) where present.contains(uid) {
+                            add(source, to: uid, tapping: app.processes, on: uid, mute: .muted)
+                        }
+                        takenOver += app.processes
+                    }
+                    if settings.needsProcessing || !extras.isEmpty {
+                        for uid in extras + (settings.excludeFromGlobal ? [] : globalExtras) {
+                            add(source, to: uid, tapping: app.processes, on: defaultUID, mute: .unmuted)
+                        }
+                        unmirrored += app.processes
+                    }
+                }
+                if settings.excludeFromGlobal { unmirrored += app.processes }
+            }
+        }
+
+        let excluded = Set(ownProcesses + reRouters + takenOver)
+        if deviceSettings(for: defaultUID).needsProcessing {
+            add(.system, to: defaultUID, tapping: Array(excluded), on: defaultUID, mute: .mutedWhenTapped)
+        }
+        let mirrorExcluded = Array(excluded.union(unmirrored))
+        for uid in globalExtras {
+            add(.system, to: uid, tapping: mirrorExcluded, on: defaultUID, mute: .unmuted)
+        }
+        return specs
+    }
+
+    private func appControl(for key: RouteKey) -> StageControl? {
+        guard case .app(let id) = key.source else { return nil }
+        if let control = appControls[id] { return control }
+        let control = StageControl()
+        appControls[id] = control
+        configureAppControl(id)
+        return control
+    }
+
+    private func deviceControl(for uid: String) -> StageControl {
+        if let control = deviceControls[uid] { return control }
+        let control = StageControl()
+        deviceControls[uid] = control
+        configureDeviceControl(uid)
+        return control
+    }
+
+    /// An app whose chosen output device isn't connected is silenced rather than moved to another device.
+    func appOutputMissing(_ id: String) -> Bool {
+        guard state.locksDevices, let uid = state.apps[id]?.outputUID else { return false }
+        return !outputDevices.contains { $0.uid == uid }
+    }
+
+    private func configureAppControl(_ id: String) {
+        guard let control = appControls[id] else { return }
+        let settings = state.apps[id] ?? AppAudioSettings()
+        let gain = settings.muted || appOutputMissing(id) ? 0 : settings.volume
+        let balance = settings.balance.balanceGains
+        control.update(gainLeft: gain * balance.left, gainRight: gain * balance.right, eq: settings.eq)
+    }
+
+    private func configureDeviceControl(_ uid: String) {
+        guard let control = deviceControls[uid] else { return }
+        let settings = deviceSettings(for: uid)
+        let balance = settings.balance.balanceGains
+        control.update(gainLeft: balance.left, gainRight: balance.right, eq: settings.eq)
+    }
+
+    /// Routes are built for the device's sample rate, so they're rebuilt when it changes.
+    private func updateSampleRateListeners() {
+        let uids = Set(routes.keys.map(\.deviceUID))
+        for uid in sampleRateListeners.keys where !uids.contains(uid) {
+            sampleRateListeners[uid] = nil
+            sampleRates[uid] = nil
+        }
+        for uid in uids where sampleRateListeners[uid] == nil {
+            guard let device = CA.device(uid: uid) else { continue }
+            let address = CA.address(kAudioDevicePropertyNominalSampleRate)
+            sampleRates[uid] = CA.value(device, address, fallback: Float64(0))
+            sampleRateListeners[uid] = PropertyListener(device, address) { [weak self] in
+                guard let self else { return }
+                let rate = CA.value(device, address, fallback: Float64(0))
+                guard rate != sampleRates[uid] else { return }
+                sampleRates[uid] = rate
+                for (key, route) in routes where key.deviceUID == uid {
+                    route.stop()
+                    routes[key] = nil
+                }
+                reconcileRoutes()
+            }
+        }
+    }
+
+    private func scheduleSave() {
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            self?.state.save()
+        }
+    }
+}
