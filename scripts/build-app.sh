@@ -4,14 +4,25 @@
 #   scripts/build-app.sh              release build, signed with your Apple Development certificate if you have one
 #   CONFIG=debug scripts/build-app.sh
 #   SIGN_IDENTITY=- scripts/build-app.sh   ad-hoc signature (macOS asks for audio permission again after every build)
+#
+# The version comes from scripts/version.sh; FREEAUDIO_LABEL/_TRAIN/_CODE/_DATE/_PRERELEASE override it (CI passes the
+# values it has checked). Without git history the build is `dev`, build 0.
 set -euo pipefail
 cd "${0:A:h}/.."
 
 CONFIG=${CONFIG:-release}
 BUNDLE_ID=${BUNDLE_ID:-io.github.yuyu1015.FreeAudio}
-VERSION=${VERSION:-0.1.0}
-BUILD_NUMBER=${BUILD_NUMBER:-$(git rev-list --count HEAD 2>/dev/null || echo 1)}
 APP=build/FreeAudio.app
+
+if [[ -z ${FREEAUDIO_CODE:-} ]] && git rev-parse -q --verify HEAD >/dev/null 2>&1; then
+    eval "$(scripts/version.sh)"
+fi
+LABEL=${FREEAUDIO_LABEL:-dev}
+TRAIN=${FREEAUDIO_TRAIN:-0.0}
+CODE=${FREEAUDIO_CODE:-0}
+DATE=${FREEAUDIO_DATE:-}
+PRERELEASE=${FREEAUDIO_PRERELEASE:-true}
+[[ $PRERELEASE == true ]] && PRERELEASE_TAG="<true/>" || PRERELEASE_TAG="<false/>"
 
 swift build -c "$CONFIG"
 BIN=$(swift build -c "$CONFIG" --show-bin-path)
@@ -34,8 +45,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleExecutable</key><string>FreeAudio</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>$VERSION</string>
-    <key>CFBundleVersion</key><string>$BUILD_NUMBER</string>
+    <key>CFBundleShortVersionString</key><string>$TRAIN</string>
+    <key>CFBundleVersion</key><string>$CODE</string>
+    <key>FreeAudioLabel</key><string>$LABEL</string>
+    <key>FreeAudioDate</key><string>$DATE</string>
+    <key>FreeAudioPrerelease</key>$PRERELEASE_TAG
     <key>CFBundleDevelopmentRegion</key><string>en</string>
     <key>CFBundleLocalizations</key><array><string>en</string><string>zh-Hant</string><string>ja</string></array>
     <key>CFBundleAllowMixedLocalizations</key><true/>
@@ -47,6 +61,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+plutil -lint -s "$APP/Contents/Info.plist"
 
 # A stable certificate keeps the System Audio Recording permission across rebuilds.
 IDENTITY=${SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Apple Development/ { print $2; exit }')}
@@ -56,4 +71,4 @@ if [[ -z "$IDENTITY" ]]; then
 fi
 codesign --force --sign "$IDENTITY" --timestamp=none "$APP"
 codesign --verify --strict "$APP"
-echo "Built $APP ($VERSION, $CONFIG, signed with: $IDENTITY)"
+echo "Built $APP ($LABEL, $TRAIN build $CODE, $CONFIG, signed with: $IDENTITY)"
