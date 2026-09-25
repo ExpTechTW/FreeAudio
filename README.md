@@ -34,7 +34,7 @@ open /Applications/FreeAudio.app
 
 腳本會自動使用鑰匙圈裡的簽署憑證，優先用 Developer ID Application，其次 Apple Development。沒有憑證時改用 ad-hoc 簽署，每次重新建置後 macOS 都會再詢問一次權限，也無法自動更新。版本號由 `scripts/version.sh` 依 git 紀錄決定（見下方「發布」）。
 
-從 GitHub 下載的 App 沒有經過公證，第一次開啟時 macOS 會擋下來，到「系統設定 › 隱私權與安全性」按「強制打開」即可。之後的更新由 FreeAudio 自己下載，不會再被擋。
+從 GitHub 下載的 App 經過 Apple 公證，第一次開啟時不會被 Gatekeeper 擋下來。自己建置的版本沒有公證，但只在本機使用，也不會被擋。
 
 FreeAudio 需要「系統音訊錄製」權限。在面板或設定視窗按「允許存取…」，然後在系統對話框中選擇「允許」；第一次調整 App 時也會自動詢問一次。還沒回答過之前，FreeAudio 不會出現在「系統設定 › 隱私權與安全性」的清單裡。如果對話框沒有出現，打開隱私權設定，在「系統音訊錄製」清單下方按「＋」加入 FreeAudio.app。之前按過「不允許」的話，到同一個清單把 FreeAudio 的開關打開即可。開啟「登入時啟動」前，建議先把 App 放進「應用程式」資料夾。
 
@@ -63,13 +63,21 @@ swift test
 
 build code 是 `1`、兩位數年份、今年第幾個 commit，只會往上長。App 只用它判斷哪個版本比較新，而且只和同一個通道比（正式版比正式版、快照比快照）；它寫在每個 release 內容最後的 `<!-- freeaudio-build: … -->` 註解裡。release 內容由 `scripts/notes.sh` 從 commit 的條目行產生，格式見 [commit.md](commit.md)：快照列出上一個版本之後的變更，正式版列出上一個正式版之後的全部變更。
 
-CI 用下面的 repository secret，以團隊的 Developer ID Application 憑證簽署（也可以用 Apple Development）。已安裝的 FreeAudio 只接受同一個團隊簽署的更新。用 Developer ID 簽署時，macOS 把音訊權限綁在團隊上，之後的更新和換發憑證都不會再詢問；從本機用 Apple Development 建置的版本換到 CI 的版本時，會重新詢問一次。
+CI 用下面的 repository secret，以團隊的 Developer ID Application 憑證簽署並公證（簽署也可以用 Apple Development，但就不能公證）。已安裝的 FreeAudio 只接受同一個團隊簽署的更新。用 Developer ID 簽署時，macOS 把音訊權限綁在團隊上，之後的更新和換發憑證都不會再詢問；從本機用 Apple Development 建置的版本換到 CI 的版本時，會重新詢問一次。
 
 | Secret | 內容 |
 | --- | --- |
-| `APPLE_DEV_CERT_BASE64` | 從「鑰匙圈存取」的「我的憑證」匯出的 .p12（含私鑰），再用 `base64 -i FreeAudio.p12 \| pbcopy` 轉成文字 |
-| `APPLE_DEV_CERT_PASSWORD` | 匯出時設定的密碼 |
+| `APPLE_CERTIFICATE` | 從「鑰匙圈存取」的「我的憑證」匯出的 .p12（含私鑰），base64 編碼 |
+| `APPLE_CERTIFICATE_PASSWORD` | 匯出時設定的密碼 |
+| `APPLE_TEAM_ID` | 團隊 ID（98Q7JARYZF） |
+| `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD` | 公證用的 Apple ID，和在 account.apple.com「登入與安全性」建立的 App 專用密碼 |
 | `DISCORD_WEBHOOK` | 選填：Discord 頻道的 webhook 網址。發布後由 `scripts/discord.py` 把繁體中文更新日誌貼到頻道，格式和 DPIP 相同（測試版橘色、正式版綠色）；沒設定就不公告 |
+
+前五個的名稱和 TREM-Lite 相同（tauri-action 讀的名稱），用 `scripts/set-apple-secrets.sh` 一次設定到多個 repository：它會先用和 CI 相同的方式檢查 .p12，再把值從標準輸入交給 `gh`，不會出現在指令列或 shell 歷史裡。
+
+```bash
+scripts/set-apple-secrets.sh DeveloperID.p12 ExpTechTW/FreeAudio ExpTechTW/TREM-Lite
+```
 
 App 用 GitHub 的公開 API 檢查更新，所以 repository 要公開，更新才會運作。
 
