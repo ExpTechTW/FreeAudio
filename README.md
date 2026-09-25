@@ -32,7 +32,7 @@ cp -R build/FreeAudio.app /Applications/
 open /Applications/FreeAudio.app
 ```
 
-腳本會自動使用鑰匙圈裡的 Apple Development 憑證簽署。沒有憑證時改用 ad-hoc 簽署，每次重新建置後 macOS 都會再詢問一次權限，也無法自動更新。版本號由 `scripts/version.sh` 依 git 紀錄決定（見下方「發布」）。
+腳本會自動使用鑰匙圈裡的簽署憑證，優先用 Developer ID Application，其次 Apple Development。沒有憑證時改用 ad-hoc 簽署，每次重新建置後 macOS 都會再詢問一次權限，也無法自動更新。版本號由 `scripts/version.sh` 依 git 紀錄決定（見下方「發布」）。
 
 從 GitHub 下載的 App 沒有經過公證，第一次開啟時 macOS 會擋下來，到「系統設定 › 隱私權與安全性」按「強制打開」即可。之後的更新由 FreeAudio 自己下載，不會再被擋。
 
@@ -63,7 +63,7 @@ swift test
 
 build code 是 `1`、兩位數年份、今年第幾個 commit，只會往上長。App 只用它判斷哪個版本比較新，而且只和同一個通道比（正式版比正式版、快照比快照）；它寫在每個 release 內容最後的 `<!-- freeaudio-build: … -->` 註解裡。release 內容由 `scripts/notes.sh` 從 commit 的條目行產生，格式見 [commit.md](commit.md)：快照列出上一個版本之後的變更，正式版列出上一個正式版之後的全部變更。
 
-CI 用下面的 repository secret，簽署要用和本機建置相同的 Apple Development 憑證。已安裝的 FreeAudio 只接受同一個團隊簽署的更新，換了憑證 macOS 也會重新詢問音訊權限。
+CI 用下面的 repository secret，以團隊的 Developer ID Application 憑證簽署（也可以用 Apple Development）。已安裝的 FreeAudio 只接受同一個團隊簽署的更新。用 Developer ID 簽署時，macOS 把音訊權限綁在團隊上，之後的更新和換發憑證都不會再詢問；從本機用 Apple Development 建置的版本換到 CI 的版本時，會重新詢問一次。
 
 | Secret | 內容 |
 | --- | --- |
