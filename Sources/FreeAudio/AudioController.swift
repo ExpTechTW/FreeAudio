@@ -1168,10 +1168,10 @@ final class AudioController: ObservableObject {
             let recordsFrom = Set(app.processes.flatMap { snapshot.recording[$0] ?? [] })
             if !recordsFrom.isEmpty || app.processes.contains(where: { snapshot.recording[$0] != nil }) {
                 let microphones = inputDevices.filter { recordsFrom.contains($0.id) }
-                let level = microphones.first.map { level(of: $0, .input) }
+                let microphone = microphones.first.map { level(of: $0, .input) }
                 uses.append(UsageStats.Use(
-                    source: SourceKey(kind: .recordingApp, key: app.id), name: app.name, volume: level?.volume ?? 0,
-                    muted: level?.muted ?? false, devices: microphones.map { SourceKey(kind: .input, key: $0.uid) }
+                    source: SourceKey(kind: .recordingApp, key: app.id), name: app.name, volume: microphone?.volume ?? 0,
+                    muted: microphone?.muted ?? false, devices: microphones.map { SourceKey(kind: .input, key: $0.uid) }
                 ))
             }
         }
