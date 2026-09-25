@@ -52,7 +52,7 @@ final class AudioRoute {
         let deviceUID = spec.key.deviceUID
 
         do {
-            let configuration = Self.aggregateConfiguration(deviceUID: deviceUID, tap: description.uuid)
+            let configuration = Self.aggregateConfiguration(deviceUID: deviceUID, tapDeviceUID: spec.tapDeviceUID, tap: description.uuid)
             try check(AudioHardwareCreateAggregateDevice(configuration as CFDictionary, &aggregateID), "error.create_mixer_output")
 
             let sampleRate = CA.value(aggregateID, CA.address(kAudioDevicePropertyNominalSampleRate), fallback: Float64(48_000))
@@ -152,7 +152,7 @@ final class AudioRoute {
         return (max(Int(pair.first ?? 1) - 1, 0), max(Int(pair.dropFirst().first ?? 2) - 1, 0))
     }
 
-    private static func aggregateConfiguration(deviceUID: String, tap: UUID) -> [String: Any] {
+    private static func aggregateConfiguration(deviceUID: String, tapDeviceUID: String?, tap: UUID) -> [String: Any] {
         var configuration: [String: Any] = [
             kAudioAggregateDeviceMainSubDeviceKey: deviceUID,
             kAudioAggregateDeviceIsStackedKey: false,
@@ -173,7 +173,9 @@ final class AudioRoute {
         configuration[kAudioAggregateDeviceTapAutoStartKey] = true
         configuration[kAudioAggregateDeviceTapListKey] = [[
             kAudioSubTapUIDKey: tap.uuidString,
-            kAudioSubTapDriftCompensationKey: true,
+            // A tap of the device the route plays on runs on that device's clock. Compensating anyway resamples it,
+            // which costs coreaudiod time and now and then drops a sample; only a tap of another device drifts.
+            kAudioSubTapDriftCompensationKey: tapDeviceUID != deviceUID,
         ]]
         return configuration
     }
