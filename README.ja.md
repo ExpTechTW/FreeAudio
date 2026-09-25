@@ -138,3 +138,7 @@ CI は次のシークレットを使います：
 ```bash
 scripts/set-apple-secrets.sh DeveloperID.p12 ExpTechTW/FreeAudio ExpTechTW/TREM-Lite
 ```
+
+## ライセンス
+
+[FreeAudio Public License](LICENSE)。**これはソースアベイラブルのライセンスで、オープンソースのライセンスではありません** —— ソースコードは公開されていて読むことも貢献することもできますが、商用利用は禁止されており、FreeAudio と競合する製品を作ることも禁止されています。全文は [LICENSE](LICENSE) をご覧ください。

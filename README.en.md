@@ -138,3 +138,7 @@ The first five share their names with TREM-Lite's, and `scripts/set-apple-secret
 ```bash
 scripts/set-apple-secrets.sh DeveloperID.p12 ExpTechTW/FreeAudio ExpTechTW/TREM-Lite
 ```
+
+## License
+
+[FreeAudio Public License](LICENSE). **This is a source-available license, not an open-source one**: the source code is public to read and to contribute to, but commercial use is prohibited, and so is using it to build a product that competes with FreeAudio. The full terms are in [LICENSE](LICENSE).

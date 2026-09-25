@@ -138,3 +138,7 @@ CI 使用這些 secret：
 ```bash
 scripts/set-apple-secrets.sh DeveloperID.p12 ExpTechTW/FreeAudio ExpTechTW/TREM-Lite
 ```
+
+## 授權
+
+[FreeAudio Public License](LICENSE)。**這是 source-available 授權，不是開放原始碼授權** —— 原始碼公開可閱讀、可貢獻，但禁止商業使用，也禁止用來做出與 FreeAudio 競爭的產品。完整條款見 [LICENSE](LICENSE)。
