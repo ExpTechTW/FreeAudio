@@ -63,12 +63,13 @@ swift test
 
 build code 是 `1`、兩位數年份、今年第幾個 commit，只會往上長。App 只用它判斷哪個版本比較新，而且只和同一個通道比（正式版比正式版、快照比快照）；它寫在每個 release 內容最後的 `<!-- freeaudio-build: … -->` 註解裡。release 內容由 `scripts/notes.sh` 從 commit 的條目行產生，格式見 [commit.md](commit.md)：快照列出上一個版本之後的變更，正式版列出上一個正式版之後的全部變更。
 
-CI 需要兩個 repository secret，用和本機建置相同的 Apple Development 憑證簽署。已安裝的 FreeAudio 只接受同一個團隊簽署的更新，換了憑證 macOS 也會重新詢問音訊權限。
+CI 用下面的 repository secret，簽署要用和本機建置相同的 Apple Development 憑證。已安裝的 FreeAudio 只接受同一個團隊簽署的更新，換了憑證 macOS 也會重新詢問音訊權限。
 
 | Secret | 內容 |
 | --- | --- |
 | `APPLE_DEV_CERT_BASE64` | 從「鑰匙圈存取」的「我的憑證」匯出的 .p12（含私鑰），再用 `base64 -i FreeAudio.p12 \| pbcopy` 轉成文字 |
 | `APPLE_DEV_CERT_PASSWORD` | 匯出時設定的密碼 |
+| `DISCORD_WEBHOOK` | 選填：Discord 頻道的 webhook 網址。發布後由 `scripts/discord.py` 把繁體中文更新日誌貼到頻道，格式和 DPIP 相同（測試版橘色、正式版綠色）；沒設定就不公告 |
 
 App 用 GitHub 的公開 API 檢查更新，所以 repository 要公開，更新才會運作。
 
