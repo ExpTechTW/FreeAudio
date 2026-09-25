@@ -177,6 +177,8 @@
 "channels.swapped" = "左右互換";
 "leveling.title" = "夜間模式";
 "leveling.help" = "壓低爆炸等大聲的片段、拉高對白等小聲的片段，小音量也聽得清楚";
+"delay.title" = "延遲";
+"delay.help" = "讓這個裝置晚一點播放，和較慢的裝置（例如藍牙喇叭）對齊";
 "correction.title" = "耳機校正";
 "correction.none" = "未使用";
 "correction.import_file" = "從檔案匯入…";
@@ -196,6 +198,7 @@
 "detail.sound" = "聲音";
 "detail.also_play_on" = "同時在這些裝置播放";
 "detail.reset_device" = "重置此裝置的設定";
+"summary.delay" = "延遲 %@";
 "settings.page.devices" = "裝置";
 "settings.page.devices_subtitle" = "選擇 FreeAudio 怎麼處理裝置的切換與新接上的裝置。";
 "settings.page.apps" = "App";

@@ -76,6 +76,8 @@ struct StageSetup: Equatable, Sendable {
     var correction: HeadphoneCorrection?
     var channels = ChannelMode.stereo
     var leveling = false
+    /// Seconds, up to `DelayLine.maximum`; only a device's stage has one.
+    var delay = 0.0
 }
 
 /// A stage's settings as published to the audio threads.
@@ -84,6 +86,7 @@ struct StageParameters: Sendable {
     var gainRight: Float = 1
     var channels = ChannelMode.stereo
     var leveling = false
+    var delay: Float = 0
     var filters = FilterSet()
     var filtersBoost = false
     /// Changes whenever `filters` does, so the audio thread only works out coefficients then.
@@ -112,12 +115,14 @@ final class StageControl: Sendable {
             preamp += correction.preamp
         }
         let scale = Float(pow(10, preamp / 20))
+        let delay = Float(setup.delay.clamped(to: 0...DelayLine.maximum))
         let bank = filters, boosts = filters.boosts()
         parameters.withLock {
             $0.gainLeft = Float(setup.gainLeft) * scale
             $0.gainRight = Float(setup.gainRight) * scale
             $0.channels = setup.channels
             $0.leveling = setup.leveling
+            $0.delay = delay
             if $0.filters != bank {
                 $0.filters = bank
                 $0.filtersBoost = boosts
@@ -285,7 +290,7 @@ struct Leveler {
 final class StageProcessor {
     private let control: StageControl
     private let sampleRate: Double
-    private var parameters: StageParameters
+    private(set) var parameters: StageParameters
     private var generation: UInt32
     private var gainLeft: Float
     private var gainRight: Float
@@ -314,7 +319,6 @@ final class StageProcessor {
     }
 
     var canBoost: Bool { parameters.canBoost || max(gainLeft, gainRight) > 1 || !leveler.isIdle }
-    var isSilent: Bool { gainLeft == 0 && gainRight == 0 && parameters.gainLeft == 0 && parameters.gainRight == 0 }
 
     /// Pulls the latest parameters; call once per IO cycle before `process`.
     func refresh() {
@@ -370,7 +374,82 @@ final class StageProcessor {
     }
 }
 
-/// Renders one tap into one output device: app stage → device stage → limiter → channel mapping.
+/// Holds both channels back by a number of frames. Changing the delay crossfades from the old one to the new one
+/// over a block, so it doesn't click.
+final class DelayLine {
+    /// The longest delay, in seconds.
+    static let maximum = 0.5
+
+    private let size: Int
+    private let left: UnsafeMutablePointer<Float>
+    private let right: UnsafeMutablePointer<Float>
+    private let fadeLeft: UnsafeMutablePointer<Float>
+    private let fadeRight: UnsafeMutablePointer<Float>
+    private var position = 0
+    private var current = 0
+
+    /// Starts out `delay` frames behind, rather than fading into it.
+    init(sampleRate: Double, block: Int, delay: Int) {
+        size = Int(Self.maximum * sampleRate) + block
+        current = min(max(delay, 0), size - block)
+        left = .allocate(capacity: size)
+        right = .allocate(capacity: size)
+        fadeLeft = .allocate(capacity: block)
+        fadeRight = .allocate(capacity: block)
+        left.initialize(repeating: 0, count: size)
+        right.initialize(repeating: 0, count: size)
+        fadeLeft.initialize(repeating: 0, count: block)
+        fadeRight.initialize(repeating: 0, count: block)
+    }
+
+    deinit {
+        for buffer in [left, right, fadeLeft, fadeRight] { buffer.deallocate() }
+    }
+
+    func process(_ blockLeft: UnsafeMutablePointer<Float>, _ blockRight: UnsafeMutablePointer<Float>, frames: Int, delay requested: Int) {
+        let delay = min(max(requested, 0), size - frames)
+        // Always kept, so a delay set later has the audio it needs.
+        store(blockLeft, in: left, frames: frames)
+        store(blockRight, in: right, frames: frames)
+        if delay != current {
+            load(fadeLeft, from: left, delay: current, frames: frames)
+            load(fadeRight, from: right, delay: current, frames: frames)
+            load(blockLeft, from: left, delay: delay, frames: frames)
+            load(blockRight, from: right, delay: delay, frames: frames)
+            Self.crossfade(from: fadeLeft, to: blockLeft, frames: frames)
+            Self.crossfade(from: fadeRight, to: blockRight, frames: frames)
+            current = delay
+        } else if delay > 0 {
+            load(blockLeft, from: left, delay: delay, frames: frames)
+            load(blockRight, from: right, delay: delay, frames: frames)
+        }
+        position = (position + frames) % size
+    }
+
+    private func store(_ block: UnsafePointer<Float>, in ring: UnsafeMutablePointer<Float>, frames: Int) {
+        let first = min(frames, size - position)
+        (ring + position).update(from: block, count: first)
+        ring.update(from: block + first, count: frames - first)
+    }
+
+    /// The `frames` that were stored `delay` frames before the block just stored.
+    private func load(_ block: UnsafeMutablePointer<Float>, from ring: UnsafeMutablePointer<Float>, delay: Int, frames: Int) {
+        let start = (position - delay + size) % size
+        let first = min(frames, size - start)
+        block.update(from: ring + start, count: first)
+        (block + first).update(from: ring, count: frames - first)
+    }
+
+    /// `to` fades in while `from` fades out.
+    private static func crossfade(from old: UnsafeMutablePointer<Float>, to new: UnsafeMutablePointer<Float>, frames: Int) {
+        var up: Float = 0, down: Float = 1, step = 1 / Float(frames), back = -step
+        vDSP_vrampmul(new, 1, &up, &step, new, 1, vDSP_Length(frames))
+        vDSP_vrampmul(old, 1, &down, &back, old, 1, vDSP_Length(frames))
+        vDSP_vadd(new, 1, old, 1, new, 1, vDSP_Length(frames))
+    }
+}
+
+/// Renders one tap into one output device: app stage → device stage → limiter → delay → channel mapping.
 final class RouteRenderer: @unchecked Sendable {
     private static let capacity = 4096
 
@@ -383,10 +462,11 @@ final class RouteRenderer: @unchecked Sendable {
     private let rightChannel: Int
     private let tapLeftChannel: Int
     private let tapRightChannel: Int
-    private let sampleRate: Float
+    private let sampleRate: Double
     private let left = UnsafeMutablePointer<Float>.allocate(capacity: capacity)
     private let right = UnsafeMutablePointer<Float>.allocate(capacity: capacity)
     private var limiterGain: Float = 1
+    private let delay: DelayLine?
 
     /// `leftChannel`/`rightChannel` are zero-based indices across all output channels of the device.
     /// `tapLeftChannel`/`tapRightChannel` pick the stereo pair out of a tap that carries a device's own channels.
@@ -394,13 +474,16 @@ final class RouteRenderer: @unchecked Sendable {
         sampleRate: Double, appStage: StageProcessor?, deviceStage: StageProcessor?, leftChannel: Int, rightChannel: Int,
         tapLeftChannel: Int = 0, tapRightChannel: Int = 1
     ) {
-        self.sampleRate = Float(sampleRate)
+        self.sampleRate = sampleRate
         self.appStage = appStage
         self.deviceStage = deviceStage
         self.leftChannel = leftChannel
         self.rightChannel = rightChannel
         self.tapLeftChannel = tapLeftChannel
         self.tapRightChannel = tapRightChannel
+        delay = deviceStage.map {
+            DelayLine(sampleRate: sampleRate, block: Self.capacity, delay: Self.frames($0.parameters.delay, at: sampleRate))
+        }
     }
 
     deinit {
@@ -433,12 +516,8 @@ final class RouteRenderer: @unchecked Sendable {
 
         appStage?.refresh()
         deviceStage?.refresh()
-        if appStage?.isSilent == true {
-            Self.clear(outputs, from: 0, to: outputFrames)
-            return
-        }
-
         let boosting = appStage?.canBoost == true || deviceStage?.canBoost == true
+        let delayFrames = Self.frames(deviceStage?.parameters.delay ?? 0, at: sampleRate)
         var offset = 0
         while offset < frames {
             let count = min(Self.capacity, frames - offset)
@@ -446,10 +525,15 @@ final class RouteRenderer: @unchecked Sendable {
             appStage?.process(left, right, frames: count)
             deviceStage?.process(left, right, frames: count)
             limit(frames: count, boosting: boosting)
+            delay?.process(left, right, frames: count, delay: delayFrames)
             write(outputs, offset: offset, frames: count)
             offset += count
         }
         Self.clear(outputs, from: frames, to: outputFrames)
+    }
+
+    private static func frames(_ seconds: Float, at sampleRate: Double) -> Int {
+        Int((Double(seconds) * sampleRate).rounded())
     }
 
     private func deinterleave(_ source: UnsafeMutablePointer<Float>, channels: Int, frames: Int) {
@@ -490,7 +574,7 @@ final class RouteRenderer: @unchecked Sendable {
         let target: Float = peak > ceiling ? ceiling / peak : 1
         let next = target < limiterGain
             ? target
-            : limiterGain + (target - limiterGain) * (1 - expf(-Float(frames) / (0.25 * sampleRate)))
+            : limiterGain + (target - limiterGain) * (1 - expf(-Float(frames) / (0.25 * Float(sampleRate))))
         if limiterGain != 1 || next != 1 {
             var gain = limiterGain
             var step = (next - limiterGain) / Float(frames)

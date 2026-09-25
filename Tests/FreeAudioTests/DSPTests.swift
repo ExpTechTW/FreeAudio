@@ -373,6 +373,20 @@ private func renderer(
         #expect(settings.gain == 0)
     }
 
+    @Test func newSettingsDefaultWhenMissing() throws {
+        let app = try JSONDecoder().decode(AppAudioSettings.self, from: Data(#"{"volume":0.5}"#.utf8))
+        #expect(app.channels == .stereo && !app.leveling && app.volume == 0.5)
+        let device = try JSONDecoder().decode(DeviceAudioSettings.self, from: Data(#"{"balance":0.1}"#.utf8))
+        #expect(device.delay == 0 && device.correction == nil && device.channels == .stereo)
+        var changed = DeviceAudioSettings()
+        changed.correction = HeadphoneCorrection(name: "x", preamp: -1, filters: [Filter(kind: .peak, frequency: 100, gain: 1)])
+        #expect(changed.needsProcessing && !changed.holdsBackSource)
+        let decoded = try JSONDecoder().decode(DeviceAudioSettings.self, from: JSONEncoder().encode(changed))
+        #expect(decoded == changed)
+        changed.correction?.enabled = false
+        #expect(!changed.needsProcessing)
+    }
+
     @Test func checkingExtraOutputsTurnsMultiOutputOnAndOff() {
         var settings = AppAudioSettings()
         // Checked once, then multi-output was turned off: that device doesn't come back.
@@ -509,5 +523,37 @@ private func renderer(
         // Dropping the 8 dB of makeup at once would jump by 0.015 here.
         let steps = zip(outputs.dropFirst(50), outputs.dropFirst(51)).map { abs($1 - $0) }
         #expect(steps.allSatisfy { $0 < 0.003 } && abs(outputs.last! - 0.01) < 1e-4)
+    }
+}
+
+@Suite struct DelayTests {
+    @Test func delayHoldsEverythingBack() throws {
+        let device = control()
+        device.update(StageSetup(delay: 0.01))
+        let buffers = IOBuffers(input: [2], output: [2], frames: 256)
+        let route = renderer(device: device)
+        var heard: [Float] = []
+        for cycle in 0..<4 {
+            buffers.render(route) { frame, _ in cycle == 0 && frame == 0 ? 1 : 0 }
+            let data = buffers.output[0].mData!.assumingMemoryBound(to: Float.self)
+            heard += (0..<256).map { data[$0 * 2] }
+        }
+        #expect(heard.firstIndex { $0 > 0.5 } == 480 && heard.filter { $0 != 0 }.count == 1)
+    }
+
+    @Test func changingTheDelayCrossfades() throws {
+        let device = control()
+        let buffers = IOBuffers(input: [2], output: [2], frames: 256)
+        let route = renderer(device: device)
+        var heard: [Float] = []
+        for cycle in 0..<12 {
+            if cycle == 6 { device.update(StageSetup(delay: 0.002)) }
+            buffers.render(route) { frame, _ in Float(sin(2 * .pi * 200 * Double(cycle * 256 + frame) / sampleRate)) * 0.5 }
+            let data = buffers.output[0].mData!.assumingMemoryBound(to: Float.self)
+            heard += (0..<256).map { data[$0 * 2] }
+        }
+        // A 200 Hz sine moves at most 0.0066 per frame at this level; a jump in time would be far more.
+        let steps = zip(heard, heard.dropFirst()).map { abs($1 - $0) }
+        #expect(steps.max() ?? 1 < 0.02)
     }
 }

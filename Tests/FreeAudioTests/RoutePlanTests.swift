@@ -131,4 +131,13 @@ import Testing
     @Test func aStandInGetsNothing() {
         #expect(plan(mirroring(to: [tv]), silenced: [tv]).isEmpty)
     }
+
+    @Test func aDelayKeepsTheDeviceSilentUntilFreeAudioPlaysIt() {
+        var state = PersistedState()
+        var device = DeviceAudioSettings()
+        device.delay = 0.1
+        state.devices[speakers] = device
+        let routes = RoutePlan.routes(defaultUID: speakers, outputs: [speakers], silenced: [], state: state, apps: [], own: own)
+        #expect(routes[RouteKey(source: .system, deviceUID: speakers, tapDeviceUID: speakers)]?.mute == .muted)
+    }
 }

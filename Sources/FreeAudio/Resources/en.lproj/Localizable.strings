@@ -177,6 +177,8 @@
 "channels.swapped" = "Left and Right Swapped";
 "leveling.title" = "Night Mode";
 "leveling.help" = "Turns loud passages down and quiet ones up, so dialogue is clear without loud surprises";
+"delay.title" = "Delay";
+"delay.help" = "Plays this device a little later, to line it up with slower devices such as Bluetooth speakers";
 "correction.title" = "Headphone Correction";
 "correction.none" = "None";
 "correction.import_file" = "Import from File…";
@@ -196,6 +198,7 @@
 "detail.sound" = "Sound";
 "detail.also_play_on" = "Also Play On";
 "detail.reset_device" = "Reset Settings for This Device";
+"summary.delay" = "Delay %@";
 "settings.page.devices" = "Devices";
 "settings.page.devices_subtitle" = "How FreeAudio handles switching devices and devices you connect.";
 "settings.page.apps" = "Apps";

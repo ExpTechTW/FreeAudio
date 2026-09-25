@@ -628,6 +628,22 @@ private struct DevicePage: View {
                 ChannelRow(mode: settings.channels) { mode in audio.updateDeviceSettings(for: device) { $0.channels = mode } }
                 SwitchRow(L("leveling.title"), isOn: settings.leveling) { on in audio.updateDeviceSettings(for: device) { $0.leveling = on } }
                     .help(L("leveling.help"))
+                LabeledRow(L("delay.title")) {
+                    Slider(
+                        value: Binding(
+                            get: { settings.delay * 1_000 },
+                            set: { value in audio.updateDeviceSettings(for: device) { $0.delay = (value / 10).rounded() / 100 } }
+                        ),
+                        in: 0...DelayLine.maximum * 1_000
+                    ) { Text(L("delay.title")) }
+                    .labelsHidden()
+                    Text("\(Int((settings.delay * 1_000).rounded())) ms")
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                        .frame(minWidth: 52, alignment: .trailing)
+                }
+                .help(L("delay.help"))
             }
 
             Card(title: L("correction.title")) {

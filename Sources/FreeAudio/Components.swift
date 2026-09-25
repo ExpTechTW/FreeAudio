@@ -372,6 +372,7 @@ extension DeviceAudioSettings {
         if leveling { parts.append(L("leveling.title")) }
         if channels != .stereo { parts.append(channels.title) }
         if balance != 0 { parts.append(balanceSummary(balance)) }
+        if delay > 0 { parts.append(LF("summary.delay", "\(Int((delay * 1_000).rounded())) ms")) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }

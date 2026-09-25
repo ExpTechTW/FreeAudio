@@ -160,19 +160,24 @@ struct DeviceAudioSettings: Codable, Equatable, Sendable {
     var muted = false
     var channels = ChannelMode.stereo
     var leveling = false
+    /// Seconds everything on the device is held back, so it plays in time with slower devices (e.g. Bluetooth).
+    var delay = 0.0
     var correction: HeadphoneCorrection?
 
     var gain: Double { muted ? 0 : volume }
     var needsProcessing: Bool {
-        balance != 0 || eq.isActive || gain != 1 || channels != .stereo || leveling || correction?.enabled == true
+        balance != 0 || eq.isActive || gain != 1 || channels != .stereo || leveling || delay > 0 || correction?.enabled == true
     }
+    /// Whether the device's own audio should stay silent even before FreeAudio's rendering of it starts: a level or a
+    /// delay mustn't let it through at full volume or early. An equalizer alone lets it through until then.
+    var holdsBackSource: Bool { gain != 1 || delay > 0 }
     var isDefault: Bool { self == DeviceAudioSettings() }
 
     var stage: StageSetup {
         let sides = balance.balanceGains
         return StageSetup(
             gainLeft: gain * sides.left, gainRight: gain * sides.right, eq: eq, correction: correction,
-            channels: channels, leveling: leveling
+            channels: channels, leveling: leveling, delay: delay
         )
     }
 
@@ -186,6 +191,7 @@ struct DeviceAudioSettings: Codable, Equatable, Sendable {
         try container.update(&muted, .muted)
         try container.update(&channels, .channels)
         try container.update(&leveling, .leveling)
+        try container.update(&delay, .delay)
         correction = try container.decodeIfPresent(HeadphoneCorrection.self, forKey: .correction)
     }
 }

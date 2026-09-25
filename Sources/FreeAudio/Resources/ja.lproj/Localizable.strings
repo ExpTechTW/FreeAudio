@@ -177,6 +177,8 @@
 "channels.swapped" = "左右を入れ替え";
 "leveling.title" = "ナイトモード";
 "leveling.help" = "大きな音を抑えて小さな音を持ち上げ、小さな音量でもせりふを聞き取りやすくします";
+"delay.title" = "遅延";
+"delay.help" = "このデバイスの再生を遅らせて、Bluetooth スピーカーなど遅いデバイスとそろえます";
 "correction.title" = "ヘッドフォン補正";
 "correction.none" = "なし";
 "correction.import_file" = "ファイルから読み込む…";
@@ -196,6 +198,7 @@
 "detail.sound" = "サウンド";
 "detail.also_play_on" = "同時に再生するデバイス";
 "detail.reset_device" = "このデバイスの設定をリセット";
+"summary.delay" = "遅延 %@";
 "settings.page.devices" = "デバイス";
 "settings.page.devices_subtitle" = "デバイスの切り替えと、新しく接続したデバイスの扱いを設定します。";
 "settings.page.apps" = "アプリ";
