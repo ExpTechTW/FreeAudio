@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import FreeAudio
@@ -45,4 +46,13 @@ import Testing
         #expect(AppLanguage.japanese.displayName == "日本語")
         #expect(AppLanguage.english.displayName == "English")
     }
+}
+
+@Test func theMenuBarIconIsAlignedAsAWhole() {
+    let on = MenuBarIcon.image(.on), muted = MenuBarIcon.image(.muted)
+    // A symbol's own image aligns by a middle band only, which let the menu bar crop the microphone's top.
+    #expect(on.alignmentRect == NSRect(origin: .zero, size: on.size))
+    #expect(muted.alignmentRect == NSRect(origin: .zero, size: muted.size))
+    #expect(on.size == muted.size && on.size.height <= NSStatusBar.system.thickness)
+    #expect(on.isTemplate && !muted.isTemplate)
 }

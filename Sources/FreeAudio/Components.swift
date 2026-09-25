@@ -145,17 +145,20 @@ struct MenuBarIcon: View {
     }
 
     static func image(_ state: AudioController.MicrophoneState) -> NSImage {
-        let size = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
-        let symbol = state == .on ? "mic.fill" : "mic.slash.fill"
-        guard let base = NSImage(systemSymbolName: symbol, accessibilityDescription: "FreeAudio") else { return NSImage() }
-        guard state != .on else {
-            // Template images follow the menu bar: black on a light bar, white on a dark one.
-            let image = base.withSymbolConfiguration(size) ?? base
-            image.isTemplate = true
-            return image
+        var configuration = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+        if state != .on { configuration = configuration.applying(.init(paletteColors: [.systemRed])) }
+        guard let glyph = NSImage(systemSymbolName: state == .on ? "mic.fill" : "mic.slash.fill", accessibilityDescription: "FreeAudio")?
+            .withSymbolConfiguration(configuration) else { return NSImage() }
+        // Drawn again onto an image of its own size. A symbol's image marks only its middle, about a capital letter's
+        // height, as what to align, and the menu bar can lay it out by that alone, cutting off the top of the
+        // microphone. A drawn image is aligned as a whole; both states are the same size, so nothing shifts.
+        let image = NSImage(size: glyph.size, flipped: false) { rect in
+            glyph.draw(in: rect)
+            return true
         }
-        let image = base.withSymbolConfiguration(size.applying(.init(paletteColors: [.systemRed]))) ?? base
-        image.isTemplate = false
+        // Template images follow the menu bar: black on a light bar, white on a dark one.
+        image.isTemplate = state == .on
+        image.accessibilityDescription = "FreeAudio"
         return image
     }
 }
