@@ -78,6 +78,10 @@ jobs:
             exit 1
           fi
 
+      # Swift comes from mise.toml, the same compiler every Mac builds with; the runner's Xcode supplies only the SDK.
+      - name: Install Swift
+        uses: jdx/mise-action@v4
+
       - name: Test
         run: swift test
 

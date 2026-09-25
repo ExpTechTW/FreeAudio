@@ -32,4 +32,6 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
+      # Swift comes from mise.toml, as in a release build.
+      - uses: jdx/mise-action@v4
       - run: swift test

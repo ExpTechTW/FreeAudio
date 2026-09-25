@@ -1,0 +1,5 @@
+# The Swift that builds FreeAudio, on every Mac and in CI (jdx/mise-action), so code that compiles here compiles for a
+# release too; Xcode's own compiler follows whichever Xcode is installed. Xcode still supplies the SDK, and a compiler
+# can't read an SDK built by a newer one, so this stays at or above the Swift of the newest Xcode in use.
+[tools]
+swift = "6.4.0"
