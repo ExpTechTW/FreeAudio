@@ -3,10 +3,10 @@ import Combine
 import SwiftUI
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case general, devices, apps, updates, about
+    case general, devices, apps, statistics, updates, about
 
-    /// The sidebar's groups: how FreeAudio behaves, and FreeAudio itself.
-    static let groups: [[SettingsPage]] = [[.general, .devices, .apps], [.updates, .about]]
+    /// The sidebar's groups: how FreeAudio behaves, what it has seen, and FreeAudio itself.
+    static let groups: [[SettingsPage]] = [[.general, .devices, .apps], [.statistics], [.updates, .about]]
 
     var id: Self { self }
     var title: String { L("settings.page.\(rawValue)") }
@@ -17,6 +17,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general: "gearshape.fill"
         case .devices: "hifispeaker.2.fill"
         case .apps: "square.grid.2x2.fill"
+        case .statistics: "chart.bar.fill"
         case .updates: "arrow.down.circle.fill"
         case .about: "info.circle.fill"
         }
@@ -27,6 +28,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general, .about: .gray
         case .devices: .blue
         case .apps: .purple
+        case .statistics: .orange
         case .updates: .indigo
         }
     }
@@ -76,6 +78,7 @@ final class SettingsWindow {
     private func makeWindow(_ models: (audio: AudioController, language: LanguageSettings, updater: Updater)) -> NSWindow {
         let root = SettingsRoot(audio: models.audio, language: models.language, navigation: navigation)
             .environmentObject(models.updater)
+            .environmentObject(models.audio.usage)
         let controller = NSHostingController(rootView: root)
         controller.sizingOptions = []
         let window = NSWindow(contentViewController: controller)
@@ -134,6 +137,7 @@ private struct SettingsRoot: View {
                 case .general: GeneralPage()
                 case .devices: DevicesPage()
                 case .apps: AppsPage()
+                case .statistics: StatisticsPage()
                 case .updates: UpdatesPage()
                 case .about: AboutPage()
                 }

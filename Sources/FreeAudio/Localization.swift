@@ -91,11 +91,13 @@ final class LanguageSettings: ObservableObject {
 private struct StringTable: Sendable {
     let strings: [String: String]
     let fallback: [String: String]
+    let locale: Locale
 
     init(_ language: AppLanguage) {
         let resolved = language == .system ? AppLanguage.systemChoice : language
         fallback = Self.load(.english)
         strings = resolved == .english ? fallback : Self.load(resolved)
+        locale = language.locale
     }
 
     private static func load(_ language: AppLanguage) -> [String: String] {
@@ -118,4 +120,20 @@ func L(_ key: String) -> String {
 
 func LF(_ key: String, _ arguments: CVarArg...) -> String {
     String(format: L(key), locale: Locale.current, arguments: arguments)
+}
+
+/// The interface language's locale, for numbers, dates and durations drawn outside SwiftUI's environment.
+func activeLocale() -> Locale {
+    activeTable.withLock { $0.locale }
+}
+
+/// "45 sec", "12 min", "2 hr, 5 min", in the interface language.
+func durationText(_ seconds: Double) -> String {
+    let formatter = DateComponentsFormatter()
+    formatter.unitsStyle = .short
+    formatter.allowedUnits = seconds < 60 ? [.second] : seconds < 3_600 ? [.minute] : [.hour, .minute]
+    var calendar = Calendar.current
+    calendar.locale = activeLocale()
+    formatter.calendar = calendar
+    return formatter.string(from: max(seconds, 0).rounded()) ?? "\(Int(seconds))s"
 }

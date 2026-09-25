@@ -59,6 +59,11 @@ final class AudioController: ObservableObject {
     private var lastPlayed: [String: Date] = [:]
     private var anyPlaying = false
     private var lastAnyPlaying = Date.distantPast
+    /// Processes whose own output FreeAudio mutes because it renders them itself.
+    private var takenOver: Set<AudioObjectID> = []
+    let usage: UsageStats
+    private let history: HistoryStore?
+    private var lastRecord = Date()
     /// Output devices each running app plays to, and when it was last seen playing there.
     private var usedDevices: [String: [String: Date]] = [:]
     private var routes: [RouteKey: AudioRoute] = [:]
@@ -98,6 +103,12 @@ final class AudioController: ObservableObject {
         self.engineEnabled = engineEnabled
         self.showsWarnings = showsWarnings
         state = PersistedState.load()
+        // Previews and tests keep their numbers in memory.
+        history = engineEnabled
+            ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+                .flatMap { HistoryStore(file: $0.appendingPathComponent("FreeAudio/history.sqlite")) }
+            : nil
+        usage = UsageStats(store: history)
         permission = AudioCapturePermission.status
         lastPermissionCheck = Date()
         // Previews and tests (engine off) must not touch the user's devices.
@@ -1012,6 +1023,8 @@ final class AudioController: ObservableObject {
     func shutdown() {
         saveTask?.cancel()
         state.save()
+        usage.save()
+        history?.close()
         timer?.invalidate()
         routes.values.forEach { $0.stop() }
         routes.removeAll()
@@ -1037,8 +1050,71 @@ final class AudioController: ObservableObject {
                 routes[key] = nil
             }
         }
+        // Across sleep the gap isn't time anything was in use.
+        let elapsed = min(now.timeIntervalSince(lastRecord), 2)
+        lastRecord = now
+        if engineEnabled {
+            recordUsage(seconds: elapsed, at: now)
+            usage.tick(at: now)
+        }
         // Also lets devices an app left drain, lingering routes go, and failed routes try again.
         reconcileRoutes()
+    }
+
+    // MARK: - Statistics
+
+    /// Counts a second for every device an app plays to or records from, and for every app playing or recording,
+    /// with its volume, whether it's muted, and the devices it uses. An app FreeAudio renders plays where FreeAudio
+    /// does, so its own muted output doesn't count for a device.
+    private func recordUsage(seconds: Double, at date: Date) {
+        guard usage.settings.tracking else { return }
+        let snapshot = monitor.snapshot
+        let own = Set(snapshot.ownProcesses)
+        let outputs = Set(snapshot.playing.filter { !takenOver.contains($0.key) }.values.joined())
+        let inputs = Set(snapshot.recording.filter { !own.contains($0.key) }.values.joined())
+        var uses = outputDevices.filter { outputs.contains($0.id) }.map { use($0, .output) }
+        uses += inputDevices.filter { inputs.contains($0.id) }.map { use($0, .input) }
+        for app in runningApps {
+            let playsOn = Set(app.processes.flatMap { snapshot.playing[$0] ?? [] })
+            if app.processes.contains(where: { snapshot.playing[$0] != nil }) {
+                let settings = settings(for: app)
+                // Heard where FreeAudio sends it, when it has a device of its own.
+                let chosen = settings.outputUID.flatMap { uid in outputDevices.first { $0.uid == uid } }
+                let devices = chosen.map { [$0.uid] + (settings.multiOutput ? settings.extraOutputUIDs : []) }
+                    ?? outputDevices.filter { playsOn.contains($0.id) }.map(\.uid)
+                uses.append(UsageStats.Use(
+                    source: SourceKey(kind: .playingApp, key: app.id), name: app.name, volume: settings.volume,
+                    muted: settings.muted || appOutputMissing(app.id), devices: devices.map { SourceKey(kind: .output, key: $0) }
+                ))
+            }
+            // A recording app's volume is its microphone's.
+            let recordsFrom = Set(app.processes.flatMap { snapshot.recording[$0] ?? [] })
+            if !recordsFrom.isEmpty || app.processes.contains(where: { snapshot.recording[$0] != nil }) {
+                let microphones = inputDevices.filter { recordsFrom.contains($0.id) }
+                let level = microphones.first.map { level(of: $0, .input) }
+                uses.append(UsageStats.Use(
+                    source: SourceKey(kind: .recordingApp, key: app.id), name: app.name, volume: level?.volume ?? 0,
+                    muted: level?.muted ?? false, devices: microphones.map { SourceKey(kind: .input, key: $0.uid) }
+                ))
+            }
+        }
+        usage.record(uses, seconds: seconds, at: date)
+    }
+
+    private func use(_ device: AudioDevice, _ direction: DeviceDirection) -> UsageStats.Use {
+        let level = heardLevel(device, direction)
+        return UsageStats.Use(source: SourceKey(kind: direction == .output ? .output : .input, key: device.uid), name: device.name,
+                              volume: level.volume, muted: level.muted)
+    }
+
+    /// A device's level, also for one the panel doesn't show.
+    private func heardLevel(_ device: AudioDevice, _ direction: DeviceDirection) -> (volume: Double, muted: Bool) {
+        if let level = levels[levelKey(device, direction)] { return (level.volume, level.muted) }
+        if usesSoftwareLevel(device, direction) {
+            let settings = deviceSettings(for: device.uid)
+            return (settings.volume, settings.muted)
+        }
+        return (AudioDevices.volume(device, direction) ?? 1, AudioDevices.isMuted(device, direction))
     }
 
     private func reconcileRoutes() {
@@ -1095,6 +1171,10 @@ final class AudioController: ObservableObject {
             lingering[key] = nil
         }
         retryAfter = retryAfter.filter { desired[$0.key] != nil }
+        takenOver = Set(desired.values.filter { spec in
+            if case .app = spec.key.source { return spec.mute == .muted }
+            return false
+        }.flatMap(\.processes))
         if let failure, failure != lastError { lastError = failure } else if failure == nil, retryAfter.isEmpty, lastError != nil { lastError = nil }
         updateSampleRateListeners()
     }
