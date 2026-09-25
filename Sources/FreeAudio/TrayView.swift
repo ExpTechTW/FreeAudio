@@ -69,6 +69,7 @@ private struct Overview: View {
     var body: some View {
         VStack(spacing: 10) {
             OutputCard(open: open)
+            AppOutputsCard(open: open)
             InputCard()
             AppsCard(open: open)
             Footer()
@@ -110,6 +111,46 @@ private struct OutputCard: View {
     }
 }
 
+/// Devices apps are sent to on their own, apart from the outputs everything plays on: no checkbox, and named after
+/// the apps, so they aren't taken for multi-output.
+private struct AppOutputsCard: View {
+    @EnvironmentObject private var audio: AudioController
+    let open: (TrayPage) -> Void
+
+    var body: some View {
+        let outputs = audio.appOutputs
+        if !outputs.isEmpty {
+            Card(title: L("section.app_outputs")) {
+                ForEach(outputs, id: \.device) { device, apps in
+                    let level = audio.level(of: device, .output)
+                    let names = apps.map(\.name).formatted(.list(type: .and))
+                    LevelRow(
+                        device: device, direction: .output, isDefault: false, caption: LF("app_outputs.for", names),
+                        warning: level.muted || level.volume <= 0.001
+                            ? RowWarning(symbol: "speaker.slash.fill", tint: .orange, text: LF(level.muted ? "app_outputs.muted" : "app_outputs.silent", names))
+                            : nil
+                    ) { open(.device(device.uid)) } accessory: {
+                        AppIconStack(apps: apps)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The apps a device plays, overlapping, as a device's accessory.
+private struct AppIconStack: View {
+    let apps: [AudioApp]
+
+    var body: some View {
+        HStack(spacing: -8) {
+            ForEach(apps.prefix(3)) { AppIcon(app: $0, size: 20) }
+        }
+        .frame(minWidth: 22)
+        .accessibilityHidden(true)
+    }
+}
+
 private struct InputCard: View {
     @EnvironmentObject private var audio: AudioController
 
@@ -140,6 +181,9 @@ private struct LevelRow<Accessory: View>: View {
     let direction: DeviceDirection
     /// The system default rather than an extra output; only it stands in for a missing device.
     let isDefault: Bool
+    /// Replaces what FreeAudio does to the device as the line under its name.
+    var caption: String?
+    var warning: RowWarning?
     /// Opens the device's page; outputs have one.
     let open: (() -> Void)?
     @ViewBuilder let accessory: Accessory
@@ -147,12 +191,12 @@ private struct LevelRow<Accessory: View>: View {
     var body: some View {
         let level = audio.level(of: device, direction)
         let disabled = isDefault && audio.isDisabled(direction)
-        let summary = direction == .output ? audio.deviceSettings(for: device.uid).summary : nil
+        let summary = caption ?? (direction == .output ? audio.deviceSettings(for: device.uid).summary : nil)
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 let label = HStack(spacing: 8) {
                     DeviceIcon(symbol: device.symbol, selected: true)
-                    NameAndSummary(name: device.name, summary: summary)
+                    NameAndSummary(name: device.name, summary: summary, warning: warning)
                     Spacer(minLength: 0)
                 }
                 .contentShape(Rectangle())
@@ -335,10 +379,12 @@ private struct AppRow: View {
 
     var body: some View {
         let settings = audio.settings(for: app)
-        let warning = settings.outputUID.flatMap { uid in
-            audio.appOutputMissing(app.id)
-                ? RowWarning(symbol: "exclamationmark.triangle.fill", tint: .red, text: LF("guard.app_missing", audio.deviceName(uid: uid)))
-                : nil
+        let warning: RowWarning? = if let uid = settings.outputUID, audio.appOutputMissing(app.id) {
+            RowWarning(symbol: "exclamationmark.triangle.fill", tint: .red, text: LF("guard.app_missing", audio.deviceName(uid: uid)))
+        } else if let silent = audio.silentOutput(forApp: app.id) {
+            RowWarning(symbol: "speaker.slash.fill", tint: .orange, text: LF(audio.level(of: silent, .output).muted ? "app.output_muted" : "app.output_silent", silent.name))
+        } else {
+            nil
         }
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
@@ -372,6 +418,21 @@ private struct AppRow: View {
     }
 }
 
+
+/// The device an app is sent to is muted or at zero, so the app can't be heard; with a way to turn it back up.
+private struct SilentOutputNotice: View {
+    @EnvironmentObject private var audio: AudioController
+    let device: AudioDevice
+
+    var body: some View {
+        let level = audio.level(of: device, .output)
+        Notice(symbol: "speaker.slash.fill", tint: .orange, text: LF(level.muted ? "app.output_muted" : "app.output_silent", device.name)) {
+            if level.muted {
+                Button(L("action.unmute")) { audio.toggleMute(device, .output) }
+            }
+        }
+    }
+}
 
 /// 0–200%; the tick in the middle is the app's own level.
 private struct AppVolumeSlider: View {
@@ -535,6 +596,9 @@ private struct AppPage: View {
             }
 
             Card(title: L("section.output")) {
+                if let silent = audio.silentOutput(forApp: app.id) {
+                    SilentOutputNotice(device: silent)
+                }
                 LabeledRow(L("app.output_device")) {
                     Picker(L("app.output_device"), selection: Binding(get: { settings.outputUID }, set: { uid in audio.updateSettings(for: app) { $0.outputUID = uid } })) {
                         Label(L("device.follow_system"), systemImage: "rectangle.on.rectangle").tag(String?.none)

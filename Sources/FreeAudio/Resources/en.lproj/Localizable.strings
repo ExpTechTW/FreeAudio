@@ -241,6 +241,10 @@
 "update.automatic_hint" = "Checks when FreeAudio starts and every 6 hours after, and tells you when a new version is out.";
 "stats.app_playing" = "Playing";
 "stats.app_recording" = "Recording";
+"section.app_outputs" = "App Outputs";
+"app_outputs.for" = "Used by %@";
+"app.output_muted" = "%@ is muted, so it can’t be heard";
+"app.output_silent" = "%@ is at 0%%, so it can’t be heard";
 "stats.by_hour" = "By Hour";
 "stats.hour_readout" = "%1$@ · output %2$@ · input %3$@";
 "stats.timeline" = "Timeline";
@@ -251,6 +255,8 @@
 "hearing.minute_readout" = "%1$@ · %2$d dB (peak %3$d dB)";
 "hearing.threshold_line" = "Threshold %d dB";
 "hearing.curve_hint" = "The average level of every 5 minutes; gaps are times nothing was heard. Export CSV for every minute.";
+"app_outputs.muted" = "Muted, so %@ can’t be heard";
+"app_outputs.silent" = "At 0%%, so %@ can’t be heard";
 "hearing.no_listening" = "Nothing was heard this day.";
 "stats.previous_week" = "Previous Week";
 "stats.next_week" = "Next Week";

@@ -241,6 +241,10 @@
 "update.automatic_hint" = "起動時とその後 6 時間ごとに確認し、新しいバージョンがあればお知らせします。";
 "stats.app_playing" = "再生";
 "stats.app_recording" = "録音";
+"section.app_outputs" = "アプリ専用の出力";
+"app_outputs.for" = "%@ が使用中";
+"app.output_muted" = "「%@」はミュートされているため聞こえません";
+"app.output_silent" = "「%@」の音量が 0%% のため聞こえません";
 "stats.by_hour" = "時間ごと";
 "stats.hour_readout" = "%1$@　出力 %2$@ · 入力 %3$@";
 "stats.timeline" = "タイムライン";
@@ -251,6 +255,8 @@
 "hearing.minute_readout" = "%1$@　%2$d dB（最大 %3$d dB）";
 "hearing.threshold_line" = "しきい値 %d dB";
 "hearing.curve_hint" = "5 分ごとの平均音量です。線が途切れているところは聞いていません。1 分ごとの値は CSV で書き出せます。";
+"app_outputs.muted" = "ミュート中のため %@ が聞こえません";
+"app_outputs.silent" = "音量が 0%% のため %@ が聞こえません";
 "hearing.no_listening" = "この日の記録はありません。";
 "stats.previous_week" = "前の週";
 "stats.next_week" = "次の週";

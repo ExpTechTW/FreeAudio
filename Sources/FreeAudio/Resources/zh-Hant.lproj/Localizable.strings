@@ -241,6 +241,10 @@
 "update.automatic_hint" = "啟動時與之後每 6 小時檢查一次，有新版本時通知你。";
 "stats.app_playing" = "播放";
 "stats.app_recording" = "錄音";
+"section.app_outputs" = "App 指定的輸出";
+"app_outputs.for" = "%@ 使用中";
+"app.output_muted" = "「%@」已靜音，聽不到";
+"app.output_silent" = "「%@」的音量是 0%%，聽不到";
 "stats.by_hour" = "每小時";
 "stats.hour_readout" = "%1$@　輸出 %2$@ · 輸入 %3$@";
 "stats.timeline" = "時間軸";
@@ -251,6 +255,8 @@
 "hearing.minute_readout" = "%1$@　%2$d dB（最大 %3$d dB）";
 "hearing.threshold_line" = "門檻 %d dB";
 "hearing.curve_hint" = "每 5 分鐘的平均音量；線斷開的地方沒有在聽。每分鐘的數值可以匯出 CSV。";
+"app_outputs.muted" = "已靜音，%@ 聽不到";
+"app_outputs.silent" = "音量是 0%%，%@ 聽不到";
 "hearing.no_listening" = "這天沒有聆聽紀錄。";
 "stats.previous_week" = "上一週";
 "stats.next_week" = "下一週";

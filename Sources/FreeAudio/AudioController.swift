@@ -95,6 +95,8 @@ final class AudioController: ObservableObject {
     private var timer: Timer?
     private var saveTask: Task<Void, Never>?
     private var deviceRefreshScheduled = false
+    /// The outputs apps are sent to whose level is followed.
+    private var shownAppOutputs: Set<String> = []
     private var volumeRefreshScheduled = false
     private var requestingPermission = false
     /// FreeAudio asks by itself once per launch; after that only when the user asks.
@@ -208,7 +210,10 @@ final class AudioController: ObservableObject {
     }
 
     func level(of device: AudioDevice, _ direction: DeviceDirection) -> DeviceLevelState {
-        levels[levelKey(device, direction)] ?? DeviceLevelState(volume: 0, muted: false, adjustable: false)
+        if let level = levels[levelKey(device, direction)] { return level }
+        // One the panel doesn't follow: asked directly.
+        let level = heardLevel(device, direction)
+        return DeviceLevelState(volume: level.volume, muted: level.muted, adjustable: false)
     }
 
     func setVolume(_ volume: Double, for device: AudioDevice, _ direction: DeviceDirection) {
@@ -726,12 +731,37 @@ final class AudioController: ObservableObject {
 
     private func levelKey(_ device: AudioDevice, _ direction: DeviceDirection) -> String { "\(direction.key):\(device.uid)" }
 
-    /// The devices whose level the panel shows: the default input and output, and the extra outputs.
+    /// The devices whose level the panel shows: the default input and output, the extra outputs, and the outputs
+    /// apps are sent to.
     private var watchedDevices: [(device: AudioDevice, direction: DeviceDirection)] {
         var devices: [(device: AudioDevice, direction: DeviceDirection)] = []
         if let defaultInput { devices.append((defaultInput, .input)) }
         if let defaultOutput { devices.append((defaultOutput, .output)) }
-        return devices + extraOutputs.map { ($0, .output) }
+        return devices + (extraOutputs + appOutputs.map(\.device)).map { ($0, .output) }
+    }
+
+    /// Output devices running apps are sent to, other than the ones everything plays on, with the apps sent there.
+    var appOutputs: [(device: AudioDevice, apps: [AudioApp])] {
+        guard state.perAppEnabled else { return [] }
+        let playing = Set([defaultOutput?.uid].compactMap { $0 } + extraOutputs.map(\.uid))
+        var result: [(device: AudioDevice, apps: [AudioApp])] = []
+        for app in runningApps {
+            guard let uid = state.apps[app.id]?.outputUID, !playing.contains(uid),
+                  let device = outputDevices.first(where: { $0.uid == uid }) else { continue }
+            if let index = result.firstIndex(where: { $0.device == device }) {
+                result[index].apps.append(app)
+            } else {
+                result.append((device, [app]))
+            }
+        }
+        return result.sorted { $0.device.name.localizedStandardCompare($1.device.name) == .orderedAscending }
+    }
+
+    /// The device an app is sent to, when it's muted or at zero, so the app can't be heard.
+    func silentOutput(forApp id: String) -> AudioDevice? {
+        guard let uid = state.apps[id]?.outputUID, let device = outputDevices.first(where: { $0.uid == uid }) else { return nil }
+        let level = level(of: device, .output)
+        return level.muted || level.volume <= 0.001 ? device : nil
     }
 
     private func refreshVolumes() {
@@ -852,7 +882,8 @@ final class AudioController: ObservableObject {
             if let name { state.appNames[id] = name }
         }
         configureAppControl(id)
-        reconcileRoutes()
+        // The outputs apps are sent to show their level.
+        outputsChanged()
         scheduleSave()
     }
 
@@ -878,7 +909,13 @@ final class AudioController: ObservableObject {
         lastPlayed = lastPlayed.filter { running.contains($0.key) }
         usedDevices = usedDevices.filter { running.contains($0.key) }
         updateVisibleApps(now: now)
-        reconcileRoutes()
+        // An app sent to a device of its own just started or quit: that device's level shows, or no longer does.
+        if Set(appOutputs.map(\.device.uid)) != shownAppOutputs {
+            shownAppOutputs = Set(appOutputs.map(\.device.uid))
+            outputsChanged()
+        } else {
+            reconcileRoutes()
+        }
     }
 
     private func updateVisibleApps(now: Date) {
