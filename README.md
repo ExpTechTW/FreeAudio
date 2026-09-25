@@ -1,122 +1,138 @@
+<div align="center">
+
+<img src=".github/assets/icon.png" width="128" alt="FreeAudio">
+
 # FreeAudio
 
-macOS 選單列音訊控制工具。用 Core Audio process tap 做到按應用程式調整音量、切換輸出裝置、多輸出與等化器，不需要安裝虛擬音訊驅動。
+**macOS 選單列的音訊控制 —— 每個 App 都有自己的音量、輸出裝置與等化器，不用安裝任何音訊驅動。**
 
-## 功能
+[![正式版](https://img.shields.io/github/v/release/ExpTechTW/FreeAudio?label=%E6%AD%A3%E5%BC%8F%E7%89%88&color=1B8A50)](https://github.com/ExpTechTW/FreeAudio/releases/latest)
+[![測試版](https://img.shields.io/github/v/tag/ExpTechTW/FreeAudio?sort=date&label=%E6%B8%AC%E8%A9%A6%E7%89%88&color=orange)](https://github.com/ExpTechTW/FreeAudio/releases)
+[![建置](https://img.shields.io/github/actions/workflow/status/ExpTechTW/FreeAudio/release.yml?branch=main&label=%E5%BB%BA%E7%BD%AE)](https://github.com/ExpTechTW/FreeAudio/actions/workflows/release.yml)
+[![macOS 26+](https://img.shields.io/badge/macOS-26%2B-000000?logo=apple&logoColor=white)](#下載)
+[![Discord](https://img.shields.io/discord/926545182407688273?logo=discord&logoColor=white&label=Discord&color=5865F2)](https://discord.gg/5dbHqV8ees)
 
-- **輸入／輸出**：切換系統預設裝置、調整音量、靜音（沒有硬體靜音的裝置會把音量歸零；沒有音量控制的輸出裝置，例如 HDMI 螢幕，由 FreeAudio 調整它播放的聲音）。靜音時滑桿變成灰色，拖動滑桿會自動解除靜音。
-- **選單列圖示**：麥克風圖示，平常跟隨選單列顏色（淺色選單列是黑色）；所選麥克風靜音、沒有可用的麥克風，或所選麥克風未連接時，都是紅色斜線麥克風。
-- **鎖定所選裝置**：喇叭和麥克風都以裝置 ID 精準比對，不看名稱。只有在 FreeAudio 裡選的裝置才算數：連接耳機等新裝置時 macOS 自動切換、或在控制中心切換，都會被改回所選裝置，面板上會顯示提示，可一鍵「改用」。找不到所選裝置時，會把 macOS 改用的裝置靜音（沒有靜音控制的裝置改用擷取方式靜音）並跳出警告，不會自動改用其他裝置；重新連接後自動恢復，也可以在警告或面板中按「改用…」。警告視窗不會卡住 FreeAudio 的其他操作。App 個別指定的輸出裝置不見時，該 App 會被靜音而不是改從其他裝置播放。可在設定視窗關閉。
-- **麥克風靜音不會自己解除**：在 FreeAudio 靜音的麥克風，只有在 FreeAudio 解除靜音才會打開。macOS 會自己解除麥克風靜音，例如用內建喇叭播放時「嘿 Siri」開始聆聽，或通話的語音處理隨著切換喇叭重新開始；FreeAudio 會立即重新靜音（實測約 1 毫秒）。一直被解除時，會再把麥克風音量固定在 0。所有已靜音的麥克風都會看守，不只目前使用的那一個。
-- **麥克風跟著輸出裝置切換**（預設關閉）：關閉時，把輸出換成耳機不會改變麥克風；macOS 自動把麥克風換成耳機的也會改回原本的麥克風。開啟時，選擇耳機等輸出裝置會一併改用它自己的麥克風（以裝置 ID 或藍牙位址精準比對）。
-- **新裝置預設 0% 並靜音**（預設開啟）：第一次連接的喇叭或麥克風會先設為 0% 並靜音；FreeAudio 第一次執行時已連接的裝置、以及之前見過的裝置不受影響。
-- **設定視窗**：從選單列面板的「設定…」開啟；FreeAudio 已在執行時再次開啟 App（Finder、Spotlight、Launchpad）也會打開設定，選單列圖示被收起來時可以用這個方式。
-- **記住聲音設定**：記住輸出與輸入裝置、各裝置的音量和靜音，FreeAudio 啟動時自動恢復；開啟「登入時啟動」就能在重新開機後自動恢復。可以在設定視窗關閉。
-- **按應用音量**：每個 App 0–200%、靜音、左右平衡與等化器。瀏覽器、Electron 等 App 的輔助程序會歸到同一個 App 底下。
-- **每個 App 的輸出裝置**：把 App 的聲音送到指定裝置，或跟隨系統預設。
-- **多輸出**：把單一 App 同時送到多個裝置。
-- **全局多輸出**：把系統預設裝置上的所有聲音鏡像到其他裝置，可以把個別 App 排除在外。開啟後在上方「輸出」勾選要同時播放的裝置，就像 AirPlay 選擇多個喇叭：每個勾選的裝置都有自己的音量、靜音、平衡與等化器。第一個是主要裝置（系統預設裝置）；取消勾選它時，由下一個勾選的裝置接手，最後一個裝置不能取消。
-- **輸出裝置等化器與平衡**：套用到該裝置上播放的所有聲音。
-- 設定按 App（bundle ID）與裝置（UID）記住，下次開啟 App 時自動套用。
-- **等化器**：沿用「音樂」App 的規格，10 段（32 Hz–16 kHz）、每段與前級擴大都是 ±12 dB。22 組內建預設集的名稱和數值都直接取自「音樂」App 本身，沒有自行調整（見下方「等化器來源」）。
-- **介面語言**：繁體中文、日文、英文，預設跟隨系統。在設定視窗的「一般」裡切換，立即生效，不用重新開啟。
-- **自動更新**：從 GitHub releases 檢查新版本，啟動時與之後每 6 小時檢查一次，每個新版本只通知一次；也可以在設定視窗的「軟體更新」手動檢查。只安裝同一個開發團隊簽署、版本也和 release 標示相符的 App，更新完自動重新開啟。正式版只收正式版；打開「接收測試版」會收到每次推送到 main 的快照。App 要放在可以寫入的資料夾（例如「應用程式」）才能自動更新。
+[下載](https://github.com/ExpTechTW/FreeAudio/releases/latest) • [更新日誌](https://github.com/ExpTechTW/FreeAudio/releases) • [回報問題](https://github.com/ExpTechTW/FreeAudio/issues)
 
-## 建置與執行
+</div>
 
-需要 macOS 26 以上、Xcode 26 以上。
+## FreeAudio 是什麼
+
+FreeAudio 是住在選單列的 macOS 音訊工具。除了切換裝置、調整音量，還能讓每個 App 有自己的音量、輸出裝置和等化器，也能把聲音同時送到多個裝置。
+
+它用 macOS 內建的 Core Audio process tap 處理聲音，不需要安裝虛擬音訊驅動。只有你調整過的 App 會經過 FreeAudio，其他聲音照常直接送到硬體。
+
+## 能做什麼
+
+| | |
+|---|---|
+| **輸入與輸出** | 切換喇叭與麥克風、調整音量與靜音。HDMI 螢幕這類本身沒有音量控制的裝置，也能由 FreeAudio 調整 |
+| **按應用音量** | 每個 App 可以有 0–200% 的音量、靜音、左右聲道平衡與 10 段等化器，也能指定自己的輸出裝置，或同時送到多個裝置。瀏覽器、Electron App 的輔助程序會歸到同一個 App |
+| **全局多輸出** | 把所有聲音同時送到多個裝置。像選 AirPlay 喇叭一樣在「輸出」勾選裝置，每個裝置各自有音量、靜音、平衡與等化器；個別 App 可以排除 |
+| **等化器** | 沿用「音樂」App 的規格：10 段（32 Hz–16 kHz）、±12 dB、前級擴大，以及名稱與數值都相同的 22 組預設集 |
+| **鎖定所選裝置** | 只用在 FreeAudio 選的喇叭和麥克風。接上耳機時 macOS 自動切換、或在控制中心切換，都會被改回來；所選裝置不在時，會把 macOS 改用的裝置靜音並提醒你，不會自動換到別的裝置 |
+| **新裝置不出聲** | 第一次連接的喇叭或麥克風先設為 0% 並靜音，避免聲音意外外放或被收音 |
+| **麥克風靜音不會自己解除** | 在 FreeAudio 靜音的麥克風，只有在 FreeAudio 解除靜音才會打開；macOS 自己解除時（例如 Siri 聆聽、通話切換裝置），會立即重新靜音。麥克風靜音或無法使用時，選單列圖示是紅色斜線麥克風 |
+| **記住聲音設定** | 記住裝置、音量與靜音，重新開機後自動恢復 |
+| **自動更新** | 從 GitHub 取得經 Apple 公證的更新，而且只安裝同一個開發者簽署的版本；可以選擇接收測試版 |
+| **三種語言** | 繁體中文、English、日本語，預設跟隨系統，也可以在設定中切換 |
+
+## 下載
+
+需要 **macOS 26 以上**，Apple silicon 與 Intel 都能用。
+
+1. 到 [Releases](https://github.com/ExpTechTW/FreeAudio/releases/latest) 下載 `FreeAudio-<版本>.zip`，解壓縮後把 FreeAudio.app 放進「應用程式」資料夾再打開。App 經過 Apple 公證，可以直接開啟。
+2. 第一次調整 App 的聲音時，macOS 會詢問「系統錄音」權限，請選「允許」。也可以在選單列面板或設定視窗按「允許存取…」。
+   - 對話框沒出現：打開「系統設定 › 隱私權與安全性 › 螢幕與系統錄音」，在「僅限系統錄音」清單下方按「＋」加入 FreeAudio。
+   - 之前按過「不允許」：在同一個清單把 FreeAudio 的開關打開。
+3. 想在重新開機後自動恢復聲音設定，請在設定中開啟「登入時啟動」。
+
+FreeAudio 在啟動時與之後每 6 小時檢查一次更新，有新版本時會通知你；也可以在「設定 › 軟體更新」按「立即檢查」。選單列圖示被收起來時，再次打開 FreeAudio（從 Finder 或 Spotlight）就會顯示設定視窗。
+
+### 正式版與測試版
+
+| | 名稱 | 發布時機 |
+|---|---|---|
+| 正式版 | `26.1`：年份．第幾版 | 手動發布 |
+| 測試版 | `26w39a`：年份、第幾週、當週第幾個 | 每次推送到 `main` 自動發布；未經審查，可能有問題 |
+
+想搶先試用，請在「設定 › 軟體更新」開啟「接收測試版」。正式版只會更新到正式版，測試版只會更新到測試版。選單列面板底部會顯示目前的版本：測試版是橘色標籤，正式版是綠色標籤。
+
+## 已知限制
+
+- 不能和其他同類的音訊工具（BetterAudio、SoundSource、FineTune 等）同時使用，否則聲音會被處理兩次；FreeAudio 偵測到時會在面板上提醒。
+- 瀏覽器的所有分頁共用同一個音訊程序，只能整個瀏覽器一起調整。
+- 經過 FreeAudio 處理的聲音會多一點點延遲。
+- Siri 的語音處理可能不理會麥克風靜音。要確保 Siri 聽不到，請在系統設定中關閉 Siri 的聆聽。
+
+## 參與開發
+
+需要 macOS 26 以上與 Xcode 26 以上。
 
 ```bash
-scripts/build-app.sh          # 產生 build/FreeAudio.app（Apple silicon 與 Intel 通用）
-cp -R build/FreeAudio.app /Applications/
-open /Applications/FreeAudio.app
+git clone https://github.com/ExpTechTW/FreeAudio.git
+cd FreeAudio
+git config core.hooksPath .githooks   # 提交時檢查 commit 訊息
+swift test                            # 跑測試
+scripts/build-app.sh                  # 建置 build/FreeAudio.app
+open build/FreeAudio.app
 ```
 
-腳本會自動使用鑰匙圈裡的簽署憑證，優先用 Developer ID Application，其次 Apple Development。沒有憑證時改用 ad-hoc 簽署，每次重新建置後 macOS 都會再詢問一次權限，也無法自動更新。版本號由 `scripts/version.sh` 依 git 紀錄決定（見下方「發布」）。
+- `scripts/build-app.sh` 用鑰匙圈裡的憑證簽署：優先 Developer ID Application，其次 Apple Development。都沒有時改用 ad-hoc 簽署，每次重新建置後 macOS 都會再詢問權限，也無法自動更新。
+- `swift run` 也能執行，但權限會算在終端機上，建議用打包好的 App。
+- commit 訊息就是更新日誌，格式見 [commit.md](commit.md)，由 git hook 與 CI 檢查。
 
-從 GitHub 下載的 App 經過 Apple 公證，第一次開啟時不會被 Gatekeeper 擋下來。自己建置的版本沒有公證，但只在本機使用，也不會被擋。
+### 運作方式
 
-FreeAudio 需要「系統音訊錄製」權限。在面板或設定視窗按「允許存取…」，然後在系統對話框中選擇「允許」；第一次調整 App 時也會自動詢問一次。還沒回答過之前，FreeAudio 不會出現在「系統設定 › 隱私權與安全性」的清單裡。如果對話框沒有出現，打開隱私權設定，在「系統音訊錄製」清單下方按「＋」加入 FreeAudio.app。之前按過「不允許」的話，到同一個清單把 FreeAudio 的開關打開即可。開啟「登入時啟動」前，建議先把 App 放進「應用程式」資料夾。
+FreeAudio 只處理你改過設定的 App 與裝置。每一條「路由」是一個 process tap 加上一個私有的 aggregate device：tap 擷取 App 的聲音並讓原本的輸出靜音，FreeAudio 在 IO 回呼裡套用音量、平衡、等化器與限幅器，再輸出到目標裝置。
 
-`swift run` 也能執行，但權限會算在終端機上，建議用打包好的 App。
+- 跟隨系統輸出的 App 只擷取送往該裝置的聲音；指定了輸出裝置的 App 則擷取它全部的聲音。
+- 輸出裝置的等化器與全局多輸出，用的是排除 FreeAudio 自己與其他音訊工具的 tap，所以不會產生回授。
+- 路由在有聲音時才啟動，App 停止播放 15 秒後回到待命，讓輸出裝置可以休眠。
+- 輸出裝置本身是 aggregate（例如「多重輸出裝置」）時，改用它的成員裝置組成路由。
 
-## 測試
+| 檔案 | 內容 |
+|---|---|
+| `AudioController.swift` | 監聽裝置與程序，決定需要哪些路由 |
+| `RoutePlan.swift`、`MultiOutput.swift` | 依設定算出路由；全局多輸出的勾選規則 |
+| `AudioRoute.swift`、`DSP.swift` | tap 與 aggregate device；即時處理（等化器、增益、限幅器、聲道對應） |
+| `Devices.swift`、`DeviceLock.swift`、`MicrophoneHold.swift` | 裝置、音量與靜音；鎖定所選裝置；麥克風靜音保護 |
+| `Processes.swift`、`Permission.swift` | 把程序歸到 App；系統錄音權限 |
+| `Settings.swift` | 設定模型、等化器預設集與儲存 |
+| `TrayView.swift`、`SettingsView.swift`、`Components.swift` | 選單列面板、設定視窗與共用元件 |
+| `Update.swift`、`Updater.swift` | 自動更新：比較版本、下載、驗證與替換 |
+| `Localization.swift` | 介面語言 |
 
-```bash
-swift test
-```
+### 等化器來源
 
-測試涵蓋等化器頻率響應、音量與平衡、限幅器、NaN／Inf 防護、聲道對應、設定檔解碼，以及三種語言的字串是否齊全、切換語言是否立即生效。更新的部分涵蓋版本比較（只和同一個通道比、比 build code 不比名稱）、GitHub release 的解析、下載檔的 SHA-256 與大小，以及簽署檢查：沒有簽署、ad-hoc 簽署、其他團隊簽署、簽署後被改過，或版本和 release 不符的 App 都不會被安裝。
+- 頻段與範圍：「音樂」App 的 AppleScript 字典（`Music.app/Contents/Resources/com.apple.Music.sdef`）列出 10 段 32 Hz–16 kHz，每段與前級擴大都是 −12 到 +12 dB。
+- 預設集：22 組的數值全部照抄 `~/Library/Preferences/com.apple.Music.eq.plist`（`eqps:129:EQPresets`，單位 0.01 dB）；名稱用「音樂」App 的在地化字串，包含新版改名的「增加低音」等五組。
+- 濾波器：「音樂」App 沒有公開濾波器形狀，FreeAudio 每段用一個八度寬的 peaking 濾波器（Audio EQ Cookbook）。
 
-## 發布
+### 發布
 
-`.github/workflows/release.yml` 沿用 DPIP 的命名與發布規則：
+沿用 DPIP 的規則（`.github/workflows/release.yml`）：
 
-- **每次推送到 main** 發布一個快照，是 GitHub 上的 pre-release，tag 就是它的名稱（例如 `26w39a`）。
-- **推送 `v<yy>.<n>` tag** 發布正式版，例如 `git tag v26.1 && git push origin v26.1`。
+- 推送到 `main`：發布測試版，也就是 GitHub 上的 pre-release，tag 就是它的名稱（例如 `26w39a`）。
+- 推送 `v<yy>.<n>` tag：發布正式版，例如 `git tag -a v26.1 -m 26.1 && git push origin v26.1`。
 
-| | 正式版 | 快照 |
-| --- | --- | --- |
-| 名稱 | `26.1` | `26w39a`：年、ISO 週（台北時間）、當週第幾個 |
-| `CFBundleShortVersionString` | `26.1` | 它之後的正式版，例如 `26.2` |
-| `CFBundleVersion`（build code） | `126000042` | `126000043` |
+每個版本都以 Developer ID 簽署、經 Apple 公證，並把更新日誌貼到 Discord。
 
-build code 是 `1`、兩位數年份、今年第幾個 commit，只會往上長。App 只用它判斷哪個版本比較新，而且只和同一個通道比（正式版比正式版、快照比快照）；它寫在每個 release 內容最後的 `<!-- freeaudio-build: … -->` 註解裡。release 內容由 `scripts/notes.sh` 從 commit 的條目行產生，格式見 [commit.md](commit.md)：快照列出上一個版本之後的變更，正式版列出上一個正式版之後的全部變更。
+- 版本號由 `scripts/version.sh` 依 git 紀錄決定。`CFBundleVersion` 是 build code：`1`、兩位數年份、今年第幾個 commit（例如 `126000027`），只會往上長。App 用它判斷哪個版本比較新，而且只和同一個通道比。
+- 更新日誌由 `scripts/notes.sh` 從 commit 的條目行產生：測試版列出上一個版本之後的變更，正式版列出上一個正式版之後的全部變更。
+- App 透過 GitHub 的公開 API 檢查更新，所以 repository 必須公開。
 
-CI 用下面的 repository secret，以團隊的 Developer ID Application 憑證簽署並公證（簽署也可以用 Apple Development，但就不能公證）。已安裝的 FreeAudio 只接受同一個團隊簽署的更新。用 Developer ID 簽署時，macOS 把音訊權限綁在團隊上，之後的更新和換發憑證都不會再詢問；從本機用 Apple Development 建置的版本換到 CI 的版本時，會重新詢問一次。
+CI 使用這些 secret：
 
 | Secret | 內容 |
-| --- | --- |
-| `APPLE_CERTIFICATE` | 從「鑰匙圈存取」的「我的憑證」匯出的 .p12（含私鑰），base64 編碼 |
-| `APPLE_CERTIFICATE_PASSWORD` | 匯出時設定的密碼 |
-| `APPLE_TEAM_ID` | 團隊 ID（98Q7JARYZF） |
-| `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD` | 公證用的 Apple ID，和在 account.apple.com「登入與安全性」建立的 App 專用密碼 |
-| `DISCORD_WEBHOOK` | 選填：Discord 頻道的 webhook 網址。發布後由 `scripts/discord.py` 把繁體中文更新日誌貼到頻道，格式和 DPIP 相同（測試版橘色、正式版綠色）；沒設定就不公告 |
+|---|---|
+| `APPLE_CERTIFICATE`、`APPLE_CERTIFICATE_PASSWORD` | Developer ID Application 憑證（含私鑰）匯出的 .p12，base64 編碼，以及它的密碼 |
+| `APPLE_TEAM_ID` | 團隊 ID |
+| `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD` | 公證用的 Apple ID，與在 account.apple.com 建立的 App 專用密碼 |
+| `DISCORD_WEBHOOK` | 選填：發布後公告更新日誌的 Discord webhook |
 
-前五個的名稱和 TREM-Lite 相同（tauri-action 讀的名稱），用 `scripts/set-apple-secrets.sh` 一次設定到多個 repository：它會先用和 CI 相同的方式檢查 .p12，再把值從標準輸入交給 `gh`，不會出現在指令列或 shell 歷史裡。
+前五個和 TREM-Lite 同名，可以用 `scripts/set-apple-secrets.sh` 一次設定到多個 repository。它會先用和 CI 相同的方式檢查 .p12，值只經由標準輸入交給 `gh`：
 
 ```bash
 scripts/set-apple-secrets.sh DeveloperID.p12 ExpTechTW/FreeAudio ExpTechTW/TREM-Lite
 ```
-
-App 用 GitHub 的公開 API 檢查更新，所以 repository 要公開，更新才會運作。
-
-## 運作方式
-
-FreeAudio 只處理你改過設定的 App，其他聲音照常直接送到硬體。
-
-- 每條「路由」是一個 process tap 加上一個私有 aggregate device：tap 擷取 App 的聲音並讓原本的輸出靜音，FreeAudio 在 IO 回呼裡套用音量、平衡、等化器與限幅器，再輸出到目標裝置。
-- 跟隨系統輸出的 App 只擷取送往該裝置的聲音；指定輸出裝置時則擷取 App 的全部聲音。
-- 輸出裝置等化器用一條排除 FreeAudio 自己與其他音訊工具的全域 tap，所以不會產生回授。
-- aggregate device 設定為等待音訊才啟動，App 停止播放 15 秒後路由會回到待命狀態，讓輸出裝置可以休眠。
-- 如果 tap 在 App 播放中持續只給出靜音，路由會自動重建一次。
-- 輸出裝置本身是 aggregate（例如「多重輸出裝置」）時，會改用它的成員裝置組成路由。
-
-| 檔案 | 內容 |
-| --- | --- |
-| `AudioController.swift` | 狀態、裝置與程序監聽、決定需要哪些路由 |
-| `AudioRoute.swift` | tap 與 aggregate device 的建立、更新與拆除 |
-| `DSP.swift` | 即時音訊處理：等化器、增益、限幅器、聲道對應 |
-| `Devices.swift`、`Processes.swift` | 裝置清單、音量與靜音、把程序歸到 App |
-| `Settings.swift` | 設定模型、等化器預設集、儲存 |
-| `TrayView.swift`、`Components.swift`、`SettingsView.swift` | 選單列面板、共用元件（卡片、滑桿、等化器曲線）與設定視窗 |
-| `Localization.swift` | App 內語言切換與字串查詢 |
-| `Update.swift`、`Updater.swift` | 版本資訊、GitHub release 的比較、下載、驗證與替換 |
-
-## 介面
-
-依照 macOS 26 的人機介面指南：音量、平衡與等化器都使用系統原生的滑桿（平衡從中央填色、App 音量在 100% 有刻度），開關、選單、設定視窗也都是系統元件。Liquid Glass 只會出現在系統元件本身（例如拖曳中的滑桿），內容區不加自訂卡片或玻璃效果。每個靜音按鈕都有包含對象名稱的輔助使用標籤，VoiceOver 可以分辨是哪個裝置或 App。
-
-## 等化器來源
-
-- 頻段與範圍：「音樂」App 的 AppleScript 字典（`/System/Applications/Music.app/Contents/Resources/com.apple.Music.sdef`）列出 10 個頻段 32 Hz、64 Hz、125 Hz … 16 kHz，每段與前級擴大都是 −12 dB 到 +12 dB。
-- 預設集數值：「音樂」App 存在 `~/Library/Preferences/com.apple.Music.eq.plist`（`eqps:129:EQPresets`，單位 0.01 dB）。22 組全部照抄；所有內建預設集的前級擴大都是 0 dB。
-- 預設集名稱：取自「音樂」App 的在地化字串。新版「音樂」把 Bass Booster 等五組改名為「增加低音」「減少低音」「增加高音」「減少高音」「增加人聲」，這裡跟著用新名稱。
-- 濾波器：「音樂」App 沒有公開它的濾波器形狀，FreeAudio 每段使用一個八度寬的 peaking 濾波器（Audio EQ Cookbook），單段在中心頻率的增益與設定值一致，相鄰頻段會疊加。
-
-## 已知限制
-
-- 不能和其他 tap 類的音訊工具（BetterAudio、SoundSource、FineTune 等）同時使用，否則聲音會被處理兩次或互相干擾。FreeAudio 偵測到時會在面板上提示。
-- 瀏覽器所有分頁共用同一個音訊程序，所以只能整個瀏覽器一起調整。
-- 經過 FreeAudio 處理的聲音會多一小段緩衝延遲。
-- macOS 的語音服務（`com.apple.CoreSpeech`）在內建喇叭播放時會解除內建麥克風的靜音。FreeAudio 會立即重新靜音，但 Siri 這類語音處理可能不理會裝置的靜音，所以「嘿 Siri」仍可能聽得到。要完全避免，請在「系統設定 › Siri」關閉聆聽。
