@@ -29,9 +29,13 @@ FreeAudio 是住在選單列的 macOS 音訊工具。除了切換裝置、調整
 | | |
 |---|---|
 | **輸入與輸出** | 切換喇叭與麥克風、調整音量與靜音。HDMI 螢幕這類本身沒有音量控制的裝置，也能由 FreeAudio 調整 |
-| **按應用音量** | 每個 App 可以有 0–200% 的音量、靜音、左右聲道平衡與 10 段等化器，也能指定自己的輸出裝置，或同時送到多個裝置。瀏覽器、Electron App 的輔助程序會歸到同一個 App |
+| **按應用音量** | 每個 App 可以有 0–200% 的音量、靜音、左右聲道平衡與 10 段等化器，也能指定自己的輸出裝置，或同時送到多個裝置。App 指定的輸出裝置會單獨列出、可以調音量，靜音時會提醒你。不想在選單列看到的 App 可以隱藏，改在設定中調整。瀏覽器、Electron App 的輔助程序會歸到同一個 App |
 | **全局多輸出** | 把所有聲音同時送到多個裝置。像選 AirPlay 喇叭一樣在「輸出」勾選裝置，每個裝置各自有音量、靜音、平衡與等化器；個別 App 可以排除 |
 | **等化器** | 沿用「音樂」App 的規格：10 段（32 Hz–16 kHz）、±12 dB、前級擴大，以及名稱與數值都相同的 22 組預設集 |
+| **耳機校正** | 匯入 [AutoEq](https://github.com/jaakkopasanen/AutoEq) 為你的耳機型號提供的 `ParametricEQ.txt`，把耳機的聲音校正得更平衡 |
+| **音效處理** | 每個 App 與輸出裝置都能切換單聲道或左右互換，也能開啟夜間模式：壓低大聲的片段、拉高小聲的對白。輸出裝置還能延遲播放，和較慢的裝置（例如藍牙喇叭）對齊 |
+| **統計** | 以分鐘為單位記錄每個裝置與 App 的使用時間、音量、靜音，以及 App 用了哪些裝置；可以看每小時分布與一天的時間軸，也能匯出 CSV。資料只存在這台 Mac 上，保留 365 天，一年約 15 MB（重度使用約 50 MB） |
+| **聽覺** | 估算傳到耳朵的音量，顯示今天的平均、峰值、安全聆聽劑量、最近 7 天的紀錄與每天的音量曲線；音量持續偏高時提醒你，每週顯示摘要 |
 | **鎖定所選裝置** | 只用在 FreeAudio 選的喇叭和麥克風。接上耳機時 macOS 自動切換、或在控制中心切換，都會被改回來；所選裝置不在時，會把 macOS 改用的裝置靜音並提醒你，不會自動換到別的裝置 |
 | **新裝置不出聲** | 第一次連接的喇叭或麥克風先設為 0% 並靜音，避免聲音意外外放或被收音 |
 | **麥克風靜音不會自己解除** | 在 FreeAudio 靜音的麥克風，只有在 FreeAudio 解除靜音才會打開；macOS 自己解除時（例如 Siri 聆聽、通話切換裝置），會立即重新靜音。麥克風靜音或無法使用時，選單列圖示是紅色斜線麥克風 |
@@ -66,6 +70,7 @@ FreeAudio 在啟動時與之後每 6 小時檢查一次更新，有新版本時�
 - 瀏覽器的所有分頁共用同一個音訊程序，只能整個瀏覽器一起調整。
 - 經過 FreeAudio 處理的聲音會多一點點延遲。
 - Siri 的語音處理可能不理會麥克風靜音。要確保 Siri 聽不到，請在系統設定中關閉 Siri 的聆聽。
+- 「聽覺」的音量是依一般裝置推算的估計值，不是量測值。你的耳機或喇叭比較大聲或比較小聲時，可以在「設定 › 聽覺」個別校正。
 
 ## 參與開發
 
@@ -92,16 +97,19 @@ FreeAudio 只處理你改過設定的 App 與裝置。每一條「路由」是�
 - 輸出裝置的等化器與全局多輸出，用的是排除 FreeAudio 自己與其他音訊工具的 tap，所以不會產生回授。
 - 路由在有聲音時才啟動，App 停止播放 15 秒後回到待命，讓輸出裝置可以休眠。
 - 輸出裝置本身是 aggregate（例如「多重輸出裝置」）時，改用它的成員裝置組成路由。
+- 開啟聽覺監測時，另一個不靜音、也不輸出的 tap 量測預設輸出裝置播放的聲音（每秒的 A 加權音量），再加上裝置音量與裝置類型的參考值，估算傳到耳朵的音量。
 
 | 檔案 | 內容 |
 |---|---|
 | `AudioController.swift` | 監聽裝置與程序，決定需要哪些路由 |
 | `RoutePlan.swift`、`MultiOutput.swift` | 依設定算出路由；全局多輸出的勾選規則 |
-| `AudioRoute.swift`、`DSP.swift` | tap 與 aggregate device；即時處理（等化器、增益、限幅器、聲道對應） |
+| `AudioRoute.swift`、`DSP.swift` | tap 與 aggregate device；即時處理（等化器、夜間模式、增益、限幅器、延遲、聲道對應、音量量測） |
+| `Correction.swift` | 讀取耳機校正設定檔 |
 | `Devices.swift`、`DeviceLock.swift`、`MicrophoneHold.swift` | 裝置、音量與靜音；鎖定所選裝置；麥克風靜音保護 |
 | `Processes.swift`、`Permission.swift` | 把程序歸到 App；系統錄音權限 |
 | `Settings.swift` | 設定模型、等化器預設集與儲存 |
-| `TrayView.swift`、`SettingsView.swift`、`Components.swift` | 選單列面板、設定視窗與共用元件 |
+| `Usage.swift`、`Hearing.swift`、`History.swift` | 統計與聽覺的紀錄與計算；以分鐘為單位存進 SQLite |
+| `TrayView.swift`、`AppEditor.swift`、`SettingsWindow.swift`、`SettingsView.swift`、`StatisticsView.swift`、`HearingView.swift`、`HUD.swift`、`Components.swift` | 選單列面板、設定視窗與各頁面、提醒與共用元件 |
 | `Update.swift`、`Updater.swift` | 自動更新：比較版本、下載、驗證與替換 |
 | `Localization.swift` | 介面語言 |
 

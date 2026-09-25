@@ -29,9 +29,13 @@ It works through the Core Audio process taps built into macOS, so there's no vir
 | | |
 |---|---|
 | **Input and output** | Switch speakers and microphones, and set their volume and mute. Devices without a volume control of their own, such as HDMI displays, get one from FreeAudio |
-| **Per-App Volume** | Give each app a volume from 0 to 200%, mute, left/right balance and a 10-band equalizer, its own output device, or several devices at once. Helper processes of browsers and Electron apps count as their app |
+| **Per-App Volume** | Give each app a volume from 0 to 200%, mute, left/right balance and a 10-band equalizer, its own output device, or several devices at once. Outputs apps are sent to are listed on their own with a volume slider, and you’re warned when one is muted. Apps you don’t want in the menu bar can be hidden and adjusted in Settings. Helper processes of browsers and Electron apps count as their app |
 | **Global Multi-Output** | Play all your sound on several devices at once. Check the devices under Output, like choosing AirPlay speakers; each one has its own volume, mute, balance and equalizer. Individual apps can be left out |
 | **Equalizer** | Built to the Music app's specification: 10 bands from 32 Hz to 16 kHz, ±12 dB, a preamp, and the Music app's 22 presets with the same names and values |
+| **Headphone Correction** | Import the `ParametricEQ.txt` that [AutoEq](https://github.com/jaakkopasanen/AutoEq) publishes for your headphone model, to even out its sound |
+| **Sound processing** | Every app and output device can switch to mono or swap left and right, and turn on Night Mode, which turns loud passages down and quiet dialogue up. Output devices can also be delayed, to line them up with slower ones such as Bluetooth speakers |
+| **Statistics** | Minute by minute, how long each device and app was in use, at what volume, when it was muted, and which devices each app used; see it by the hour or on a timeline of the day, or export CSV. It stays on this Mac for 365 days and takes about 15 MB a year (about 50 MB with heavy use) |
+| **Hearing** | Estimates how loud the sound at your ears is, with today's average, peak and safe listening dose, the last 7 days, and each day's level through the day; alerts you when it stays loud, and sums up each week |
 | **Keep Chosen Devices** | Only the speaker and microphone chosen in FreeAudio are used. When macOS switches to headphones as they connect, or you switch in Control Center, FreeAudio switches back. If the chosen device is missing, whatever macOS picked instead is muted and you're told, rather than moving to another device |
 | **Quiet new devices** | A speaker or microphone connected for the first time starts at 0% and muted, so nothing plays or listens by surprise |
 | **Microphones stay muted** | A microphone muted in FreeAudio only opens again when you unmute it in FreeAudio. When macOS unmutes it by itself, for Siri or when a call changes devices, FreeAudio mutes it again at once. The menu bar icon is a red slashed microphone while the microphone is muted or unavailable |
@@ -66,6 +70,7 @@ To try new builds early, turn on Get Pre-releases in Settings › Updates. A rel
 - A browser plays all of its tabs from one audio process, so the whole browser is adjusted together.
 - Sound that goes through FreeAudio is delayed very slightly.
 - Siri's voice processing may ignore a muted microphone. To be sure Siri can't hear you, turn off Siri's listening in System Settings.
+- Hearing levels are estimates based on typical hardware, not measurements. If your headphones or speakers play louder or quieter, calibrate them in Settings › Hearing.
 
 ## Development
 
@@ -92,16 +97,19 @@ FreeAudio only processes the apps and devices whose settings you changed. Each "
 - The output devices' equalizers and Global Multi-Output use taps that leave out FreeAudio itself and other audio tools, so there's no feedback.
 - Routes only start when there's sound, and go back to waiting 15 seconds after an app stops playing, so output devices can sleep.
 - When an output device is itself an aggregate (such as a Multi-Output Device), its member devices make up the route.
+- While hearing is monitored, one more tap, which neither mutes nor plays anything, measures what the default output plays (its A-weighted level each second). Adding the device's volume and a reference level for its kind of device estimates the level at your ears.
 
 | File | What's in it |
 |---|---|
 | `AudioController.swift` | Watches devices and processes, and decides which routes are needed |
 | `RoutePlan.swift`, `MultiOutput.swift` | Works out the routes from the settings; the checking rules of Global Multi-Output |
-| `AudioRoute.swift`, `DSP.swift` | Taps and aggregate devices; real-time processing (equalizer, gain, limiter, channel mapping) |
+| `AudioRoute.swift`, `DSP.swift` | Taps and aggregate devices; real-time processing (equalizer, Night Mode, gain, limiter, delay, channel mapping, level metering) |
+| `Correction.swift` | Reading headphone correction profiles |
 | `Devices.swift`, `DeviceLock.swift`, `MicrophoneHold.swift` | Devices, volume and mute; Keep Chosen Devices; keeping microphones muted |
 | `Processes.swift`, `Permission.swift` | Grouping processes by app; the System Audio Recording permission |
 | `Settings.swift` | Settings, equalizer presets and saving them |
-| `TrayView.swift`, `SettingsView.swift`, `Components.swift` | The menu bar panel, the Settings window and shared controls |
+| `Usage.swift`, `Hearing.swift`, `History.swift` | Recording and working out statistics and hearing exposure, kept minute by minute in SQLite |
+| `TrayView.swift`, `AppEditor.swift`, `SettingsWindow.swift`, `SettingsView.swift`, `StatisticsView.swift`, `HearingView.swift`, `HUD.swift`, `Components.swift` | The menu bar panel, the Settings window and its pages, alerts and shared controls |
 | `Update.swift`, `Updater.swift` | Automatic updates: comparing versions, downloading, verifying and replacing |
 | `Localization.swift` | Interface languages |
 
