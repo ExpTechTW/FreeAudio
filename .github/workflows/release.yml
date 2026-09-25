@@ -83,8 +83,8 @@ jobs:
 
       - name: Install the signing identity
         env:
-          APPLE_DEV_CERT_BASE64: ${{ secrets.APPLE_DEV_CERT_BASE64 }}
-          APPLE_DEV_CERT_PASSWORD: ${{ secrets.APPLE_DEV_CERT_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: scripts/ci-keychain.sh
 
       - name: Build
