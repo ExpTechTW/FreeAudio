@@ -119,6 +119,7 @@ jobs:
           cat NOTES.md
 
       - name: Publish
+        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
           LABEL: ${{ steps.v.outputs.label }}
@@ -138,3 +139,21 @@ jobs:
             --notes-file NOTES.md \
             --prerelease="$PRERELEASE" \
             "build/FreeAudio-$LABEL.zip"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      # Here rather than in a workflow of its own listening on `release`: GitHub doesn't start a workflow for an
+      # event its own GITHUB_TOKEN caused, and the release above is created with that token.
+      - name: Announce on Discord
+        if: always() && steps.publish.outputs.tag != ''
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.publish.outputs.tag }}
+        run: |
+          if [ -z "${DISCORD_WEBHOOK:-}" ]; then
+            echo "::notice::DISCORD_WEBHOOK is not set — nothing announced"
+            exit 0
+          fi
+          # A warning, not a failure: the release is out by now, and a red run would say it isn't.
+          python3 scripts/discord.py "$TAG" ||
+            echo "::warning::Discord announcement failed — the release itself is fine"
