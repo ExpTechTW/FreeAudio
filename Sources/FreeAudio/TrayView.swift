@@ -45,6 +45,16 @@ struct TrayView: View {
 
     private var footer: some View {
         VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Text(LF("settings.version", updater.build.label))
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                ReleaseBadge(prerelease: updater.build.isPrerelease)
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 4)
+            .accessibilityElement(children: .combine)
+            // Only when a newer build is out.
             if let release = updater.available {
                 MenuRow {
                     updater.showAvailable()

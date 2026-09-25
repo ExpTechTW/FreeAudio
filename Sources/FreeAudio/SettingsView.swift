@@ -206,7 +206,7 @@ private struct UpdateSection: View {
             LabeledContent {
                 HStack(spacing: 8) {
                     Text(updater.build.label).monospacedDigit().textSelection(.enabled)
-                    KindBadge(prerelease: updater.build.isPrerelease)
+                    ReleaseBadge(prerelease: updater.build.isPrerelease)
                 }
             } label: {
                 Label(L("update.current"), systemImage: "shippingbox")
@@ -278,21 +278,6 @@ private struct UpdateSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-    }
-}
-
-/// Release or pre-release, like the label GitHub puts on a release.
-private struct KindBadge: View {
-    let prerelease: Bool
-
-    var body: some View {
-        let color: Color = prerelease ? .orange : .green
-        Text(L(prerelease ? "update.kind_prerelease" : "update.kind_release"))
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(color)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
-            .background(Capsule().fill(color.opacity(0.14)))
     }
 }
 

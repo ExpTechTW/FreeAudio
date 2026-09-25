@@ -176,6 +176,21 @@ extension Text {
     }
 }
 
+/// Release or pre-release, like the label GitHub puts on a release: green for a release, orange for a pre-release.
+struct ReleaseBadge: View {
+    let prerelease: Bool
+
+    var body: some View {
+        let color: Color = prerelease ? .orange : .green
+        Text(L(prerelease ? "update.kind_prerelease" : "update.kind_release"))
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(color.opacity(0.14)))
+    }
+}
+
 /// Output device with a round checkbox, for choosing extra outputs.
 struct DeviceCheckRow: View {
     let device: AudioDevice
