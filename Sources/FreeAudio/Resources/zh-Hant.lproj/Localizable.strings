@@ -85,7 +85,7 @@
 "preset.vocal" = "增加人聲";
 "preset.custom" = "手動";
 
-"permission.denied" = "FreeAudio 沒有「系統音訊錄製」權限。請打開隱私權設定，在清單中開啟 FreeAudio。";
+"permission.denied" = "FreeAudio 沒有「系統錄音」權限。請打開隱私權設定，在清單中開啟 FreeAudio。";
 "permission.request" = "允許存取…";
 "permission.onboarding" = "允許 FreeAudio 存取系統音訊，才能調整個別 App 的音量。";
 "permission.request_hint" = "按「允許存取」後，在系統對話框中選擇「允許」。如果沒有出現對話框，請打開隱私權設定，按清單下方的「＋」加入 FreeAudio。";
@@ -111,7 +111,7 @@
 "settings.new_devices_silent" = "新裝置預設 0% 並靜音";
 "settings.new_devices_silent_hint" = "第一次連接的喇叭或麥克風會先設為 0% 並靜音，避免意外發出聲音或收音。";
 "settings.permission" = "權限";
-"settings.audio_capture" = "系統音訊錄製";
+"settings.audio_capture" = "系統錄音";
 "settings.permission_hint" = "FreeAudio 只在你調整應用程式的音量、輸出或等化器時處理它的聲音，音訊不會被儲存或傳送。";
 "settings.saved_apps" = "已儲存的應用程式設定";
 "settings.no_saved_apps" = "尚未調整任何應用程式";
