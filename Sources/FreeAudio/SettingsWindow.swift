@@ -3,10 +3,10 @@ import Combine
 import SwiftUI
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case general, devices, apps, statistics, updates, about
+    case general, devices, apps, statistics, hearing, updates, about
 
     /// The sidebar's groups: how FreeAudio behaves, what it has seen, and FreeAudio itself.
-    static let groups: [[SettingsPage]] = [[.general, .devices, .apps], [.statistics], [.updates, .about]]
+    static let groups: [[SettingsPage]] = [[.general, .devices, .apps], [.statistics, .hearing], [.updates, .about]]
 
     var id: Self { self }
     var title: String { L("settings.page.\(rawValue)") }
@@ -18,6 +18,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .devices: "hifispeaker.2.fill"
         case .apps: "square.grid.2x2.fill"
         case .statistics: "chart.bar.fill"
+        case .hearing: "ear.fill"
         case .updates: "arrow.down.circle.fill"
         case .about: "info.circle.fill"
         }
@@ -29,12 +30,13 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .devices: .blue
         case .apps: .purple
         case .statistics: .orange
+        case .hearing: .pink
         case .updates: .indigo
         }
     }
 }
 
-/// Which page the Settings window shows.
+/// Which page the Settings window shows; also set from outside, e.g. by a hearing alert.
 @MainActor
 final class SettingsNavigation: ObservableObject {
     @Published var page: SettingsPage {
@@ -79,6 +81,7 @@ final class SettingsWindow {
         let root = SettingsRoot(audio: models.audio, language: models.language, navigation: navigation)
             .environmentObject(models.updater)
             .environmentObject(models.audio.usage)
+            .environmentObject(models.audio.hearing)
         let controller = NSHostingController(rootView: root)
         controller.sizingOptions = []
         let window = NSWindow(contentViewController: controller)
@@ -138,6 +141,7 @@ private struct SettingsRoot: View {
                 case .devices: DevicesPage()
                 case .apps: AppsPage()
                 case .statistics: StatisticsPage()
+                case .hearing: HearingPage()
                 case .updates: UpdatesPage()
                 case .about: AboutPage()
                 }

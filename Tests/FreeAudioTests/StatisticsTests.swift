@@ -73,6 +73,20 @@ import Testing
         #expect(broken.varint() == nil)
     }
 
+    @Test func hearingRecordsPackSmallAndKeepTheirNumbers() throws {
+        var record = HearingRecord(name: "Headphones")
+        for (level, seconds) in [(62.4, 20.0), (70.2, 25), (84.9, 10), (91.5, 5)] { record.tally.add(level: level, seconds: seconds, offset: -3.25) }
+        var packer = Packer()
+        record.pack(into: &packer) { _ in nil }
+        #expect(packer.bytes.count <= 45)
+        var unpacker = Unpacker(packer.bytes)
+        let back = try #require(HearingRecord.unpack(&unpacker) { _ in nil })
+        #expect(unpacker.atEnd && back.tally.levels == record.tally.levels)
+        #expect(abs((back.tally.average ?? 0) - (record.tally.average ?? 1)) < 0.01)
+        #expect(back.tally.peak == 91.5 && abs(back.tally.dose - record.tally.dose) < 1e-4)
+        #expect(abs((back.tally.offset ?? 0) + 3.25) < 0.051)
+    }
+
     @Test func usageRecordsKeepMuteAndDevices() throws {
         let record = UsageRecord(name: "Firefox", seconds: 59.6, volumeSeconds: 40, mutedSeconds: 10, devices: [Self.headphones: 45, Self.speakers: 14.6])
         var packer = Packer()
@@ -121,17 +135,42 @@ import Testing
         #expect(store.records(UsageRecord.self, minutes: 0..<Int.max).map(\.minute) == [60])
     }
 
+    @MainActor @Test func aKindOfRecordAddedSinceGetsItsColumn() throws {
+        let file = temporaryFile()
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let old = try #require(SQLiteConnection(path: file.path, readOnly: false))
+        #expect(old.execute("PRAGMA user_version = 3; CREATE TABLE minute(minute INTEGER PRIMARY KEY, usage BLOB); INSERT INTO minute VALUES(60, x'0102');"))
+        let store = try #require(HistoryStore(file: file))
+        var hearing = HearingRecord(name: "Speakers")
+        hearing.tally.add(level: 70, seconds: 1)
+        store.add([Self.speakers: hearing], minute: 60)
+        store.waitForWrites()
+        // What was there stays.
+        #expect(store.records(HearingRecord.self, minutes: 0..<Int.max).map(\.minute) == [60])
+        var usage = 0
+        old.run("SELECT count(*) FROM minute WHERE usage IS NOT NULL") { usage = $0.int(0) }
+        #expect(usage == 1)
+    }
+
     @MainActor @Test func prunesAndClears() throws {
         let file = temporaryFile()
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
         let store = try #require(HistoryStore(file: file))
         for minute in [100, 200, 300] { store.add([Self.speakers: UsageRecord(name: "Speakers", seconds: 1)], minute: minute) }
+        var hearing = HearingRecord(name: "Speakers")
+        hearing.tally.add(level: 70, seconds: 1)
+        store.add([Self.speakers: hearing], minute: 100)
         store.prune(before: 250)
         store.waitForWrites()
         #expect(store.records(UsageRecord.self, minutes: 0..<Int.max).map(\.minute) == [300])
-        store.removeAll(UsageRecord.self)
+        #expect(store.records(HearingRecord.self, minutes: 0..<Int.max).isEmpty)
+        // Clearing one kind keeps the other.
+        store.add([Self.speakers: hearing], minute: 300)
+        store.removeAll(HearingRecord.self)
         store.waitForWrites()
-        #expect(store.records(UsageRecord.self, minutes: 0..<Int.max).isEmpty)
+        #expect(store.records(HearingRecord.self, minutes: 0..<Int.max).isEmpty)
+        #expect(store.records(UsageRecord.self, minutes: 0..<Int.max).map(\.minute) == [300])
     }
 
     @MainActor @Test func aHistoryKeepsTodayAndReadsOtherDaysFromTheStore() throws {

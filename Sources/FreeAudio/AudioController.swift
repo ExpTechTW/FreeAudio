@@ -62,8 +62,10 @@ final class AudioController: ObservableObject {
     /// Processes whose own output FreeAudio mutes because it renders them itself.
     private var takenOver: Set<AudioObjectID> = []
     let usage: UsageStats
+    let hearing: HearingMonitor
     private let history: HistoryStore?
     private var lastRecord = Date()
+    private var volumeDecibels: (uid: String, volume: Double, decibels: Double)?
     /// Output devices each running app plays to, and when it was last seen playing there.
     private var usedDevices: [String: [String: Date]] = [:]
     private var routes: [RouteKey: AudioRoute] = [:]
@@ -109,6 +111,7 @@ final class AudioController: ObservableObject {
                 .flatMap { HistoryStore(file: $0.appendingPathComponent("FreeAudio/history.sqlite")) }
             : nil
         usage = UsageStats(store: history)
+        hearing = HearingMonitor(store: history)
         permission = AudioCapturePermission.status
         lastPermissionCheck = Date()
         // Previews and tests (engine off) must not touch the user's devices.
@@ -126,6 +129,7 @@ final class AudioController: ObservableObject {
             }
             if state.remembersSound { pendingLevels = Set(state.deviceLevels.keys) }
         }
+        hearing.onMonitoringChange = { [weak self] in self?.reconcileRoutes() }
         refreshDevices()
         installSystemListeners()
         monitor.start()
@@ -889,7 +893,7 @@ final class AudioController: ObservableObject {
     private func lastActive(_ source: RouteKey.Source, now: Date) -> Date {
         switch source {
         case .app(let id): playingApps.contains(id) ? now : lastPlayed[id] ?? .distantPast
-        case .system: anyPlaying ? now : lastAnyPlaying
+        case .system, .meter: anyPlaying ? now : lastAnyPlaying
         }
     }
 
@@ -1024,6 +1028,7 @@ final class AudioController: ObservableObject {
         saveTask?.cancel()
         state.save()
         usage.save()
+        hearing.save()
         history?.close()
         timer?.invalidate()
         routes.values.forEach { $0.stop() }
@@ -1055,13 +1060,16 @@ final class AudioController: ObservableObject {
         lastRecord = now
         if engineEnabled {
             recordUsage(seconds: elapsed, at: now)
+            recordHearing(elapsed: elapsed, at: now)
             usage.tick(at: now)
+            hearing.tick(at: now)
+            hearing.checkWeeklySummary(at: now)
         }
         // Also lets devices an app left drain, lingering routes go, and failed routes try again.
         reconcileRoutes()
     }
 
-    // MARK: - Statistics
+    // MARK: - Statistics and hearing
 
     /// Counts a second for every device an app plays to or records from, and for every app playing or recording,
     /// with its volume, whether it's muted, and the devices it uses. An app FreeAudio renders plays where FreeAudio
@@ -1115,6 +1123,27 @@ final class AudioController: ObservableObject {
             return (settings.volume, settings.muted)
         }
         return (AudioDevices.volume(device, direction) ?? 1, AudioDevices.isMuted(device, direction))
+    }
+
+    /// The meter only runs while something plays; a second it didn't measure was silent.
+    private func recordHearing(elapsed: Double, at date: Date) {
+        guard hearing.settings.monitoring, let device = defaultOutput else { return }
+        let measurement = routes.first { $0.key.isMeter }?.value.takeMeasurement()
+        let level = level(of: device, .output)
+        hearing.record(
+            meanSquare: measurement?.meanSquare, seconds: measurement?.seconds ?? elapsed, device: device, volume: level.volume,
+            volumeDecibels: decibels(level.volume, device), muted: level.muted, at: date
+        )
+    }
+
+    /// The device's output level in dB at `volume`, from its own scale; FreeAudio's software level is already in
+    /// what the meter hears. Worked out again only when the volume changes.
+    private func decibels(_ volume: Double, _ device: AudioDevice) -> Double {
+        guard !usesSoftwareLevel(device, .output) else { return 0 }
+        if let cached = volumeDecibels, cached.uid == device.uid, cached.volume == volume { return cached.decibels }
+        let decibels = AudioDevices.decibels(volume, device) ?? Exposure.approximateDecibels(volume: volume)
+        volumeDecibels = (device.uid, volume, decibels)
+        return decibels
     }
 
     private func reconcileRoutes() {
@@ -1203,7 +1232,8 @@ final class AudioController: ObservableObject {
                     id: app.id, processes: app.processes, playsOn: devicesInUse(app), outputMissing: appOutputMissing(app.id)
                 )
             },
-            own: ownProcesses + reRouters
+            own: ownProcesses + reRouters,
+            meter: hearing.settings.monitoring
         )
     }
 

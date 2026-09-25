@@ -141,3 +141,44 @@ import Testing
         #expect(routes[RouteKey(source: .system, deviceUID: speakers, tapDeviceUID: speakers)]?.mute == .muted)
     }
 }
+
+@Suite struct MeterPlanTests {
+    private let speakers = "BuiltInSpeakerDevice"
+    private let own: [AudioObjectID] = [1]
+
+    private func meter(_ state: PersistedState, apps: [RoutePlan.App] = [], silenced: Set<String> = []) -> RouteSpec? {
+        RoutePlan.routes(defaultUID: speakers, outputs: [speakers], silenced: silenced, state: state, apps: apps, own: own, meter: true)
+            .values.first { $0.key.isMeter }
+    }
+
+    @Test func measuresEveryAppButTheOnesFreeAudioRenders() {
+        #expect(meter(PersistedState())?.processes == [] && meter(PersistedState())?.key.source == .meter(ownOnly: false))
+        var state = PersistedState()
+        var settings = AppAudioSettings()
+        settings.volume = 0.5
+        state.apps["music"] = settings
+        let spec = meter(state, apps: [RoutePlan.App(id: "music", processes: [20, 21], playsOn: [], outputMissing: false)])
+        #expect(spec?.processes == [20, 21] && spec?.mute == .unmuted && spec?.tapDeviceUID == speakers)
+    }
+
+    @Test func measuresOnlyFreeAudioWhenItRendersTheWholeDevice() {
+        var state = PersistedState()
+        var device = DeviceAudioSettings()
+        device.balance = 0.3
+        state.devices[speakers] = device
+        let spec = meter(state)
+        #expect(spec?.key.source == .meter(ownOnly: true) && spec?.processes == own)
+    }
+
+    @Test func aSilencedDeviceIsNotMeasured() {
+        #expect(meter(PersistedState(), silenced: [speakers]) == nil)
+    }
+
+    @Test func aMeterTapsTheWayItsSourceSays() {
+        func description(ownOnly: Bool) -> CATapDescription {
+            AudioRoute.makeDescription(RouteSpec(key: RouteKey(source: .meter(ownOnly: ownOnly), deviceUID: "spk", tapDeviceUID: "spk"), processes: [7], mute: .unmuted))
+        }
+        #expect(!description(ownOnly: true).isExclusive && description(ownOnly: true).processes == [7])
+        #expect(description(ownOnly: false).isExclusive && description(ownOnly: false).muteBehavior == .unmuted)
+    }
+}

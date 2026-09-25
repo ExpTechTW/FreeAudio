@@ -242,7 +242,7 @@ private struct Sources {
     }
 }
 
-/// Usage statistics in a SQLite database: a row per minute, keyed by `Day.minute`, with a column per kind
+/// Statistics and hearing history in a SQLite database: a row per minute, keyed by `Day.minute`, with a column per kind
 /// of record. A column holds each source's number followed by its record, packed (`Packer`); sources are named once, in
 /// a table of their own. One row for everything in a minute keeps each row's own bookkeeping to once a minute.
 ///
@@ -255,7 +255,7 @@ final class HistoryStore: @unchecked Sendable {
     /// `PRAGMA user_version` of the current layout; a database in another one starts over.
     private static let layout = 3
     /// The kinds of record, each a column of `minute`.
-    private static let columns = [UsageRecord.table]
+    private static let columns = [UsageRecord.table, HearingRecord.table]
 
     private let queue = DispatchQueue(label: "FreeAudio.history", qos: .utility)
     /// Only used on `queue`.
@@ -295,6 +295,12 @@ final class HistoryStore: @unchecked Sendable {
               let reader = SQLiteConnection(path: file.path, readOnly: true),
               reader.execute("PRAGMA cache_size = -4096") else { return nil }
         if layout != Self.layout { writer.execute("VACUUM") }
+        // A kind of record added since the database was made gets its column.
+        var existing: Set<String> = []
+        writer.run("SELECT name FROM pragma_table_info('minute')") { existing.insert($0.text(0)) }
+        for column in Self.columns where !existing.contains(column) {
+            writer.execute("ALTER TABLE minute ADD COLUMN \(column) BLOB")
+        }
         self.writer = writer
         self.reader = reader
         writerSources.load(writer)

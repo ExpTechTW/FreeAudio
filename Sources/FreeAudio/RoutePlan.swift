@@ -11,9 +11,11 @@ enum RoutePlan {
         let outputMissing: Bool
     }
 
-    /// `own` are processes never tapped: FreeAudio itself, and other tools that play back what they capture.
+    /// `own` are processes never tapped: FreeAudio itself, and other tools that play back what they capture. `meter`
+    /// adds a route measuring what the default device plays, for hearing exposure.
     static func routes(
-        defaultUID: String, outputs: Set<String>, silenced: Set<String>, state: PersistedState, apps: [App], own: [AudioObjectID]
+        defaultUID: String, outputs: Set<String>, silenced: Set<String>, state: PersistedState, apps: [App], own: [AudioObjectID],
+        meter: Bool = false
     ) -> [RouteKey: RouteSpec] {
         // Only while the switch is on: turning it off takes every copy away at once.
         let globalExtras = state.globalMultiOutput ? state.globalOutputUIDs.filter { $0 != defaultUID && outputs.contains($0) } : []
@@ -76,6 +78,13 @@ enum RoutePlan {
         let mirrorExcluded = Array(excluded.union(unmirrored))
         for uid in globalExtras {
             add(.system, to: uid, tapping: mirrorExcluded, on: defaultUID, mute: .unmuted)
+        }
+        if meter {
+            // Another tap still hears an app whose own output FreeAudio mutes, so the meter leaves out the apps
+            // FreeAudio renders and hears FreeAudio's rendering of them instead; that's all there is to hear once
+            // FreeAudio renders the whole device.
+            let whole = specs[RouteKey(source: .system, deviceUID: defaultUID, tapDeviceUID: defaultUID)] != nil
+            add(.meter(ownOnly: whole), to: defaultUID, tapping: whole ? own : takenOver, on: defaultUID, mute: .unmuted)
         }
         return specs
     }

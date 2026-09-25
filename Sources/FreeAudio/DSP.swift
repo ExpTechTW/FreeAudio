@@ -183,6 +183,23 @@ struct Biquad {
         self.init(b: (b.0 / a0, b.1 / a0, b.2 / a0), a: (a.0 / a0, a.1 / a0))
     }
 
+    /// The three sections of an A-weighting filter (IEC 61672), by the bilinear transform of its analogue poles
+    /// (20.6 Hz twice, 107.7 Hz, 737.9 Hz and 12.2 kHz twice), scaled to 0 dB at 1 kHz.
+    static func aWeighting(sampleRate: Double) -> [Biquad] {
+        let pole = [20.598997, 107.65265, 737.86223, 12_194.217].map { frequency in
+            let omega = 2 * Double.pi * frequency
+            return (2 * sampleRate - omega) / (2 * sampleRate + omega)
+        }
+        var sections = [
+            Biquad(b: (1, 2, 1), a: (-2 * pole[3], pole[3] * pole[3])),
+            Biquad(b: (1, -2, 1), a: (-(pole[1] + pole[2]), pole[1] * pole[2])),
+            Biquad(b: (1, -2, 1), a: (-2 * pole[0], pole[0] * pole[0])),
+        ]
+        let gain = 1 / sections.reduce(1) { $0 * $1.magnitude(at: 1_000, sampleRate: sampleRate) }
+        (sections[0].b0, sections[0].b1, sections[0].b2) = (sections[0].b0 * gain, sections[0].b1 * gain, sections[0].b2 * gain)
+        return sections
+    }
+
     /// |H| at `frequency`.
     func magnitude(at frequency: Double, sampleRate: Double) -> Double {
         let omega = 2 * Double.pi * frequency / sampleRate
@@ -449,30 +466,37 @@ final class DelayLine {
     }
 }
 
-/// Renders one tap into one output device: app stage → device stage → limiter → delay → channel mapping.
+/// Renders one tap into one output device: app stage → device stage → limiter → delay → channel mapping. A meter has
+/// no stages and no output; it only measures what its tap carries.
 final class RouteRenderer: @unchecked Sendable {
     private static let capacity = 4096
 
     let cycles = Atomic<UInt64>(0)
     /// Uptime in nanoseconds when the tap last delivered anything but silence; 0 until it has.
     let lastSound = Atomic<UInt64>(0)
+    /// A meter's running A-weighted sum of squares (a `Double`'s bits), and the frames it covers.
+    let energy = Atomic<UInt64>(0)
+    let measuredFrames = Atomic<UInt64>(0)
+    let sampleRate: Double
     private let appStage: StageProcessor?
     private let deviceStage: StageProcessor?
     private let leftChannel: Int
     private let rightChannel: Int
     private let tapLeftChannel: Int
     private let tapRightChannel: Int
-    private let sampleRate: Double
     private let left = UnsafeMutablePointer<Float>.allocate(capacity: capacity)
     private let right = UnsafeMutablePointer<Float>.allocate(capacity: capacity)
     private var limiterGain: Float = 1
     private let delay: DelayLine?
+    private let weighting: UnsafeMutablePointer<Biquad>?
+    private var energyTotal = 0.0
+    private var framesTotal: UInt64 = 0
 
     /// `leftChannel`/`rightChannel` are zero-based indices across all output channels of the device.
     /// `tapLeftChannel`/`tapRightChannel` pick the stereo pair out of a tap that carries a device's own channels.
     init(
-        sampleRate: Double, appStage: StageProcessor?, deviceStage: StageProcessor?, leftChannel: Int, rightChannel: Int,
-        tapLeftChannel: Int = 0, tapRightChannel: Int = 1
+        sampleRate: Double, appStage: StageProcessor?, deviceStage: StageProcessor?, leftChannel: Int = 0, rightChannel: Int = 1,
+        tapLeftChannel: Int = 0, tapRightChannel: Int = 1, measures: Bool = false
     ) {
         self.sampleRate = sampleRate
         self.appStage = appStage
@@ -484,11 +508,19 @@ final class RouteRenderer: @unchecked Sendable {
         delay = deviceStage.map {
             DelayLine(sampleRate: sampleRate, block: Self.capacity, delay: Self.frames($0.parameters.delay, at: sampleRate))
         }
+        if measures {
+            let sections = Biquad.aWeighting(sampleRate: sampleRate)
+            weighting = .allocate(capacity: sections.count)
+            weighting?.initialize(from: sections, count: sections.count)
+        } else {
+            weighting = nil
+        }
     }
 
     deinit {
         left.deallocate()
         right.deallocate()
+        weighting?.deallocate()
     }
 
     func makeIOBlock() -> AudioDeviceIOBlock {
@@ -499,8 +531,8 @@ final class RouteRenderer: @unchecked Sendable {
         cycles.add(1, ordering: .relaxed)
         let inputs = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inputData))
         let outputs = UnsafeMutableAudioBufferListPointer(outputData)
-        guard let firstOutput = outputs.first, firstOutput.mNumberChannels > 0 else { return }
-        let outputFrames = Int(firstOutput.mDataByteSize) / MemoryLayout<Float>.size / Int(firstOutput.mNumberChannels)
+        // A meter has no output to fill.
+        let outputFrames = outputs.first.map { Int($0.mDataByteSize) / MemoryLayout<Float>.size / max(Int($0.mNumberChannels), 1) } ?? .max
 
         // The aggregate lists the device's own input streams first and the tap last.
         guard let tap = inputs.last, tap.mNumberChannels > 0,
@@ -526,10 +558,15 @@ final class RouteRenderer: @unchecked Sendable {
             deviceStage?.process(left, right, frames: count)
             limit(frames: count, boosting: boosting)
             delay?.process(left, right, frames: count, delay: delayFrames)
+            if weighting != nil { measure(frames: count) }
             write(outputs, offset: offset, frames: count)
             offset += count
         }
-        Self.clear(outputs, from: frames, to: outputFrames)
+        if weighting != nil {
+            energy.store(energyTotal.bitPattern, ordering: .relaxed)
+            measuredFrames.store(framesTotal, ordering: .relaxed)
+        }
+        if outputFrames != .max { Self.clear(outputs, from: frames, to: outputFrames) }
     }
 
     private static func frames(_ seconds: Float, at sampleRate: Double) -> Int {
@@ -549,6 +586,20 @@ final class RouteRenderer: @unchecked Sendable {
             left[frame] = source[frame * channels + leftIndex]
             right[frame] = source[frame * channels + rightIndex]
         }
+    }
+
+    /// Adds the block's A-weighted mean square over both channels, so a full-scale sine measures -3 dB.
+    private func measure(frames: Int) {
+        guard let weighting else { return }
+        var sum = 0.0
+        for i in 0..<frames {
+            var x = SIMD2(Double(left[i]), Double(right[i]))
+            for section in 0..<3 { x = weighting[section].process(x) }
+            sum += (x * x).sum()
+        }
+        for section in 0..<3 { weighting[section].settle() }
+        energyTotal += sum / 2
+        framesTotal += UInt64(frames)
     }
 
     /// Block peak limiter (fast attack, slow release) with a soft clipper for what the attack ramp lets through.

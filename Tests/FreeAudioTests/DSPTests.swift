@@ -105,7 +105,9 @@ private final class IOBuffers {
     init(input: [Int], output: [Int], frames: Int = 512) {
         self.frames = frames
         func make(_ channels: [Int]) -> UnsafeMutableAudioBufferListPointer {
-            let list = AudioBufferList.allocate(maximumBuffers: channels.count)
+            // A meter's aggregate has no output streams at all.
+            let list = AudioBufferList.allocate(maximumBuffers: max(channels.count, 1))
+            list.unsafeMutablePointer.pointee.mNumberBuffers = UInt32(channels.count)
             for (index, count) in channels.enumerated() {
                 let data = UnsafeMutablePointer<Float>.allocate(capacity: frames * count)
                 data.initialize(repeating: 0, count: frames * count)
@@ -436,6 +438,18 @@ private func renderer(
         #expect(Biquad(Filter(kind: .lowPass, frequency: 1_000, q: 0), sampleRate: sampleRate) == nil)
     }
 
+    @Test func aWeightingMatchesTheStandard() throws {
+        let sections = Biquad.aWeighting(sampleRate: 48_000)
+        func weight(_ frequency: Double) -> Double { decibels(sections.reduce(1) { $0 * $1.magnitude(at: frequency, sampleRate: 48_000) }) }
+        #expect(abs(weight(1_000)) < 0.001)
+        #expect(abs(weight(100) + 19.1) < 0.1 && abs(weight(50) + 30.2) < 0.2 && abs(weight(2_000) - 1.2) < 0.1)
+        // Android's sound dose uses the same coefficients (MelProcessor.cpp).
+        #expect(abs(sections[0].b0 - 0.234183043) < 1e-8)
+        #expect(abs(sections[0].a1 + 0.224558458) < 1e-8 && abs(sections[0].a2 - 0.012606625) < 1e-8)
+        #expect(abs(sections[1].a1 + 1.893870495) < 1e-8 && abs(sections[1].a2 - 0.895159769) < 1e-8)
+        #expect(abs(sections[2].a1 + 1.994614456) < 1e-8 && abs(sections[2].a2 - 0.994621707) < 1e-8)
+    }
+
     @Test func headphoneCorrectionAppliesItsFiltersAndPreamp() {
         var correction = HeadphoneCorrection(name: "Test", preamp: -3, filters: [Filter(kind: .peak, frequency: 1_000, gain: 6, q: 1)])
         let control = StageControl()
@@ -526,7 +540,7 @@ private func renderer(
     }
 }
 
-@Suite struct DelayTests {
+@Suite struct DelayAndMeterTests {
     @Test func delayHoldsEverythingBack() throws {
         let device = control()
         device.update(StageSetup(delay: 0.01))
@@ -555,5 +569,17 @@ private func renderer(
         // A 200 Hz sine moves at most 0.0066 per frame at this level; a jump in time would be far more.
         let steps = zip(heard, heard.dropFirst()).map { abs($1 - $0) }
         #expect(steps.max() ?? 1 < 0.02)
+    }
+
+    @Test func meterMeasuresTheAWeightedLevel() throws {
+        let buffers = IOBuffers(input: [2], output: [], frames: 480)
+        for (frequency, expected) in [(1_000.0, -3.01), (100, -22.1)] {
+            let meter = RouteRenderer(sampleRate: sampleRate, appStage: nil, deviceStage: nil, measures: true)
+            buffers.render(meter, cycles: 100) { frame, _ in Float(sin(2 * .pi * frequency * Double(frame) / sampleRate)) }
+            let energy = Double(bitPattern: meter.energy.load(ordering: .relaxed))
+            let frames = Double(meter.measuredFrames.load(ordering: .relaxed))
+            #expect(frames == 48_000)
+            #expect(abs(10 * log10(energy / frames) - expected) < 0.15, "\(frequency) Hz")
+        }
     }
 }

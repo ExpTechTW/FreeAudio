@@ -15,10 +15,14 @@ enum DeviceDirection: Sendable {
 }
 
 struct AudioDevice: Identifiable, Hashable, Sendable {
+    /// What plays the sound, for estimating how loud it is at the ear.
+    enum Kind: Sendable { case headphones, builtInSpeakers, speakers }
+
     let id: AudioDeviceID
     let uid: String
     let name: String
     let symbol: String
+    var kind = Kind.speakers
     /// Its controls in the direction it was listed for, read once: they don't change while it's connected.
     var hasVolume = false
     var muteElements: [AudioObjectPropertyElement] = []
@@ -44,12 +48,14 @@ enum AudioDevices {
                   let rawName = CA.string(id, CA.address(kAudioObjectPropertyName)) else { return nil }
             let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines.union(.controlCharacters))
             let transport = CA.value(id, CA.address(kAudioDevicePropertyTransportType), fallback: UInt32(0))
+            let symbol = symbol(id: id, uid: uid, transport: transport, name: name, direction: direction)
             let mainMute = CA.address(kAudioDevicePropertyMute, scope: direction.scope)
             // Mute on the main element, or per channel when the device has no main mute.
             let muteElements: [AudioObjectPropertyElement] = CA.isSettable(id, mainMute) ? [kAudioObjectPropertyElementMain]
                 : [1, 2].filter { CA.isSettable(id, CA.address(kAudioDevicePropertyMute, scope: direction.scope, element: $0)) }
             return AudioDevice(
-                id: id, uid: uid, name: name, symbol: symbol(transport: transport, name: name, direction: direction),
+                id: id, uid: uid, name: name, symbol: symbol,
+                kind: headphoneSymbols.contains(symbol) ? .headphones : transport == kAudioDeviceTransportTypeBuiltIn ? .builtInSpeakers : .speakers,
                 hasVolume: CA.isSettable(id, volumeAddress(direction)), muteElements: muteElements
             )
         }
@@ -95,6 +101,19 @@ enum AudioDevices {
         CA.set(device.id, volumeAddress(direction), value: Float32(volume.clamped(to: 0...1)))
     }
 
+    /// The output level a volume setting gives, in dB from the device's own scale; `nil` when it has none.
+    static func decibels(_ volume: Double, _ device: AudioDevice) -> Double? {
+        for element in [kAudioObjectPropertyElementMain, 1] {
+            var address = CA.address(kAudioDevicePropertyVolumeScalarToDecibels, scope: kAudioObjectPropertyScopeOutput, element: element)
+            var value = Float32(volume)
+            var size = UInt32(MemoryLayout<Float32>.size)
+            if CA.has(device.id, address), AudioObjectGetPropertyData(device.id, &address, 0, nil, &size, &value) == noErr, value.isFinite {
+                return Double(value)
+            }
+        }
+        return nil
+    }
+
     // MARK: Mute
 
     static func isMuted(_ device: AudioDevice, _ direction: DeviceDirection) -> Bool {
@@ -128,11 +147,17 @@ enum AudioDevices {
 
     // MARK: Icons
 
-    private static func symbol(transport: UInt32, name: String, direction: DeviceDirection) -> String {
+    private static let headphoneSymbols: Set = ["headphones", "airpods", "airpods.pro", "airpods.max", "beats.headphones"]
+
+    private static func symbol(id: AudioDeviceID, uid: String, transport: UInt32, name: String, direction: DeviceDirection) -> String {
         let lowercased = name.lowercased()
         switch transport {
         case kAudioDeviceTransportTypeBuiltIn:
-            return isLaptop ? "laptopcomputer" : direction == .input ? "mic" : "desktopcomputer"
+            if direction == .input { return isLaptop ? "laptopcomputer" : "mic" }
+            // The headphone jack: its own device on recent Macs, a data source of the built-in output on older ones.
+            let source = CA.value(id, CA.address(kAudioDevicePropertyDataSource, scope: kAudioObjectPropertyScopeOutput), fallback: UInt32(0))
+            if uid.localizedCaseInsensitiveContains("headphone") || source == 0x6864_706E /* 'hdpn' */ { return "headphones" }
+            return isLaptop ? "laptopcomputer" : "desktopcomputer"
         case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE:
             if lowercased.contains("airpods max") { return "airpods.max" }
             if lowercased.contains("airpods pro") { return "airpods.pro" }
@@ -149,7 +174,7 @@ enum AudioDevices {
             return "waveform"
         default:
             if direction == .input { return "mic" }
-            return ["headphone", "headset", "耳機", "ヘッドホン"].contains(where: lowercased.contains) ? "headphones" : "hifispeaker"
+            return ["headphone", "headset", "耳機", "ヘッドホン", "ヘッドフォン"].contains(where: lowercased.contains) ? "headphones" : "hifispeaker"
         }
     }
 
