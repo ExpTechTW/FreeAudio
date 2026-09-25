@@ -175,6 +175,8 @@
 "channels.stereo" = "Stereo";
 "channels.mono" = "Mono";
 "channels.swapped" = "Left and Right Swapped";
+"leveling.title" = "Night Mode";
+"leveling.help" = "Turns loud passages down and quiet ones up, so dialogue is clear without loud surprises";
 "correction.title" = "Headphone Correction";
 "correction.none" = "None";
 "correction.import_file" = "Import from File…";

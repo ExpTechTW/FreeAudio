@@ -175,6 +175,8 @@
 "channels.stereo" = "立體聲";
 "channels.mono" = "單聲道";
 "channels.swapped" = "左右互換";
+"leveling.title" = "夜間模式";
+"leveling.help" = "壓低爆炸等大聲的片段、拉高對白等小聲的片段，小音量也聽得清楚";
 "correction.title" = "耳機校正";
 "correction.none" = "未使用";
 "correction.import_file" = "從檔案匯入…";

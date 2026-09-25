@@ -459,4 +459,55 @@ private func renderer(
         let panned = run(StageSetup(gainLeft: 1, gainRight: 0.5, channels: .mono), left: 0.4, right: 0.2)
         #expect(abs(panned.left - 0.3) < 1e-6 && abs(panned.right - 0.15) < 1e-6)
     }
+
+    @Test func nightModeCatchesASuddenBangAtOnce() {
+        let control = StageControl()
+        control.update(StageSetup(leveling: true))
+        let stage = StageProcessor(control: control, sampleRate: sampleRate)
+        let l = UnsafeMutablePointer<Float>.allocate(capacity: 512), r = UnsafeMutablePointer<Float>.allocate(capacity: 512)
+        defer { l.deallocate(); r.deallocate() }
+        for block in 0..<100 {
+            // Quiet for a second, then as loud as it gets.
+            let level: Float = block < 94 ? 0.01 : 1
+            l.update(repeating: level, count: 512)
+            r.update(repeating: level, count: 512)
+            stage.refresh()
+            stage.process(l, r, frames: 512)
+            if block == 94 {
+                // From the second chunk of the block it starts in, the bang is at the level the curve gives full scale.
+                let settled = powf(10, (Leveler.makeup - Leveler.reduction(at: 0)) / 20)
+                #expect((32..<512).allSatisfy { abs(l[$0] - settled) < 1e-4 })
+            }
+        }
+    }
+
+    @Test func nightModeBringsLoudAndQuietCloser() {
+        func level(_ amplitude: Float) -> Float {
+            abs(run(StageSetup(leveling: true), left: amplitude, right: amplitude, blocks: 200).left)
+        }
+        let loud = level(0.9), quiet = level(0.01)
+        // Quiet audio comes up by the makeup gain; loud audio ends up lower than it went in.
+        #expect(abs(20 * log10(quiet / 0.01) - Leveler.makeup) < 0.1)
+        #expect(loud < 0.9 && 20 * log10(loud / quiet) < 20 * log10(0.9 / 0.01) - 10)
+    }
+
+    @Test func switchingNightModeOffEasesBack() {
+        let control = StageControl()
+        control.update(StageSetup(leveling: true))
+        let stage = StageProcessor(control: control, sampleRate: sampleRate)
+        let l = UnsafeMutablePointer<Float>.allocate(capacity: 512), r = UnsafeMutablePointer<Float>.allocate(capacity: 512)
+        defer { l.deallocate(); r.deallocate() }
+        var outputs: [Float] = []
+        for block in 0..<400 {
+            if block == 50 { control.update(StageSetup()) }
+            l.update(repeating: 0.01, count: 512)
+            r.update(repeating: 0.01, count: 512)
+            stage.refresh()
+            stage.process(l, r, frames: 512)
+            outputs.append(l[511])
+        }
+        // Dropping the 8 dB of makeup at once would jump by 0.015 here.
+        let steps = zip(outputs.dropFirst(50), outputs.dropFirst(51)).map { abs($1 - $0) }
+        #expect(steps.allSatisfy { $0 < 0.003 } && abs(outputs.last! - 0.01) < 1e-4)
+    }
 }

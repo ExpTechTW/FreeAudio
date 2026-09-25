@@ -109,14 +109,16 @@ struct AppAudioSettings: Codable, Equatable, Sendable {
     var excludeFromGlobal = false
     var eq = EQSettings()
     var channels = ChannelMode.stereo
+    /// Night mode (`Leveler`).
+    var leveling = false
 
     var isSilenced: Bool { muted || volume == 0 }
-    var needsProcessing: Bool { muted || volume != 1 || balance != 0 || eq.isActive || channels != .stereo }
+    var needsProcessing: Bool { muted || volume != 1 || balance != 0 || eq.isActive || channels != .stereo || leveling }
     var isDefault: Bool { self == AppAudioSettings() }
 
     var stage: StageSetup {
         let gain = muted ? 0 : volume, sides = balance.balanceGains
-        return StageSetup(gainLeft: gain * sides.left, gainRight: gain * sides.right, eq: eq, channels: channels)
+        return StageSetup(gainLeft: gain * sides.left, gainRight: gain * sides.right, eq: eq, channels: channels, leveling: leveling)
     }
 
     /// Checks or unchecks a device to play the app on as well. Checking one turns multi-output on, and unchecking
@@ -144,6 +146,7 @@ struct AppAudioSettings: Codable, Equatable, Sendable {
         try container.update(&excludeFromGlobal, .excludeFromGlobal)
         try container.update(&eq, .eq)
         try container.update(&channels, .channels)
+        try container.update(&leveling, .leveling)
     }
 }
 
@@ -156,16 +159,20 @@ struct DeviceAudioSettings: Codable, Equatable, Sendable {
     var volume = 1.0
     var muted = false
     var channels = ChannelMode.stereo
+    var leveling = false
     var correction: HeadphoneCorrection?
 
     var gain: Double { muted ? 0 : volume }
-    var needsProcessing: Bool { balance != 0 || eq.isActive || gain != 1 || channels != .stereo || correction?.enabled == true }
+    var needsProcessing: Bool {
+        balance != 0 || eq.isActive || gain != 1 || channels != .stereo || leveling || correction?.enabled == true
+    }
     var isDefault: Bool { self == DeviceAudioSettings() }
 
     var stage: StageSetup {
         let sides = balance.balanceGains
         return StageSetup(
-            gainLeft: gain * sides.left, gainRight: gain * sides.right, eq: eq, correction: correction, channels: channels
+            gainLeft: gain * sides.left, gainRight: gain * sides.right, eq: eq, correction: correction,
+            channels: channels, leveling: leveling
         )
     }
 
@@ -178,6 +185,7 @@ struct DeviceAudioSettings: Codable, Equatable, Sendable {
         try container.update(&volume, .volume)
         try container.update(&muted, .muted)
         try container.update(&channels, .channels)
+        try container.update(&leveling, .leveling)
         correction = try container.decodeIfPresent(HeadphoneCorrection.self, forKey: .correction)
     }
 }

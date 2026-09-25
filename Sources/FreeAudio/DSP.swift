@@ -75,6 +75,7 @@ struct StageSetup: Equatable, Sendable {
     var eq = EQSettings()
     var correction: HeadphoneCorrection?
     var channels = ChannelMode.stereo
+    var leveling = false
 }
 
 /// A stage's settings as published to the audio threads.
@@ -82,12 +83,13 @@ struct StageParameters: Sendable {
     var gainLeft: Float = 1
     var gainRight: Float = 1
     var channels = ChannelMode.stereo
+    var leveling = false
     var filters = FilterSet()
     var filtersBoost = false
     /// Changes whenever `filters` does, so the audio thread only works out coefficients then.
     var filterGeneration: UInt32 = 0
 
-    var canBoost: Bool { max(gainLeft, gainRight) > 1 || filtersBoost }
+    var canBoost: Bool { max(gainLeft, gainRight) > 1 || leveling || filtersBoost }
 }
 
 /// UI-side handle for a stage. Audio threads read it with a try-lock and never block.
@@ -115,6 +117,7 @@ final class StageControl: Sendable {
             $0.gainLeft = Float(setup.gainLeft) * scale
             $0.gainRight = Float(setup.gainRight) * scale
             $0.channels = setup.channels
+            $0.leveling = setup.leveling
             if $0.filters != bank {
                 $0.filters = bank
                 $0.filtersBoost = boosts
@@ -217,6 +220,67 @@ private func filter(_ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutableP
     for j in 0..<count { sections[order[j]].settle() }
 }
 
+/// Night mode: a compressor that turns loud passages down and brings quiet ones up, so dialogue and explosions end up
+/// closer together. It follows the louder channel 32 frames at a time: a louder chunk is turned down at once, from its
+/// own peak, so a sudden bang doesn't get through at the gain meant for the quiet before it; the gain comes back up
+/// slowly, which keeps it from wobbling with each wave of a bass note.
+struct Leveler {
+    static let threshold: Float = -24
+    static let ratio: Float = 3
+    static let knee: Float = 6
+    static let makeup: Float = 8
+    private static let chunk = 32
+
+    private let release: Float
+    /// Back to unity after it's switched off.
+    private let fade: Float
+    /// How far loud audio is being turned down, in dB.
+    private var reduction: Float = 0
+    private var gain: Float = 1
+
+    init(sampleRate: Double) {
+        release = 1 - expf(-Float(Self.chunk) / (0.5 * Float(sampleRate)))
+        fade = 1 - expf(-Float(Self.chunk) / (0.1 * Float(sampleRate)))
+    }
+
+    /// The static curve: how many dB audio at `level` dBFS is turned down, with a soft knee around the threshold.
+    static func reduction(at level: Float) -> Float {
+        let over = level - threshold, slope = 1 - 1 / ratio
+        if over <= -knee / 2 { return 0 }
+        if over >= knee / 2 { return over * slope }
+        return slope * (over + knee / 2) * (over + knee / 2) / (2 * knee)
+    }
+
+    /// Whether switching it off has finished fading its gain back to 1.
+    var isIdle: Bool { gain == 1 && reduction == 0 }
+
+    mutating func process(_ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>, frames: Int, on: Bool) {
+        var offset = 0
+        while offset < frames {
+            let count = min(Self.chunk, frames - offset)
+            var target: Float = 1
+            if on {
+                var peakLeft: Float = 0, peakRight: Float = 0
+                vDSP_maxmgv(left + offset, 1, &peakLeft, vDSP_Length(count))
+                vDSP_maxmgv(right + offset, 1, &peakRight, vDSP_Length(count))
+                let wanted = Self.reduction(at: 20 * log10f(max(peakLeft, peakRight, 1e-6)))
+                reduction = wanted > reduction ? wanted : reduction + (wanted - reduction) * release
+                target = powf(10, (Self.makeup - reduction) / 20)
+            } else {
+                reduction = 0
+                // Off: ease back to unity, then stop.
+                target = abs(gain - 1) < 0.001 ? 1 : gain + (1 - gain) * fade
+            }
+            var start = gain, step = (target - gain) / Float(count)
+            vDSP_vrampmul(left + offset, 1, &start, &step, left + offset, 1, vDSP_Length(count))
+            start = gain
+            vDSP_vrampmul(right + offset, 1, &start, &step, right + offset, 1, vDSP_Length(count))
+            gain = target
+            offset += count
+        }
+    }
+}
+
 /// Filter and gain state for one stage of one route. Only the route's IO thread touches it.
 final class StageProcessor {
     private let control: StageControl
@@ -230,6 +294,7 @@ final class StageProcessor {
     /// The slots that change the sound, in order; empty and flat ones are skipped.
     private let active = UnsafeMutablePointer<Int>.allocate(capacity: FilterSet.capacity)
     private var activeCount = 0
+    private var leveler: Leveler
 
     init(control: StageControl, sampleRate: Double) {
         self.control = control
@@ -238,6 +303,7 @@ final class StageProcessor {
         generation = parameters.filterGeneration &- 1
         gainLeft = parameters.gainLeft
         gainRight = parameters.gainRight
+        leveler = Leveler(sampleRate: sampleRate)
         sections.initialize(repeating: Biquad(), count: FilterSet.capacity)
         active.initialize(repeating: 0, count: FilterSet.capacity)
     }
@@ -247,7 +313,7 @@ final class StageProcessor {
         active.deallocate()
     }
 
-    var canBoost: Bool { parameters.canBoost || max(gainLeft, gainRight) > 1 }
+    var canBoost: Bool { parameters.canBoost || max(gainLeft, gainRight) > 1 || !leveler.isIdle }
     var isSilent: Bool { gainLeft == 0 && gainRight == 0 && parameters.gainLeft == 0 && parameters.gainRight == 0 }
 
     /// Pulls the latest parameters; call once per IO cycle before `process`.
@@ -268,6 +334,7 @@ final class StageProcessor {
             vDSP_vswap(left, 1, right, 1, vDSP_Length(frames))
         }
         if activeCount > 0 { filter(left, right, frames: frames, sections, active, count: activeCount) }
+        if parameters.leveling || !leveler.isIdle { leveler.process(left, right, frames: frames, on: parameters.leveling) }
         Self.applyGain(left, frames: frames, from: gainLeft, to: parameters.gainLeft)
         Self.applyGain(right, frames: frames, from: gainRight, to: parameters.gainRight)
         gainLeft = parameters.gainLeft

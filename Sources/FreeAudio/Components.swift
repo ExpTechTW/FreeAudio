@@ -369,6 +369,7 @@ extension DeviceAudioSettings {
         var parts: [String] = []
         if eq.isActive { parts.append(LF("summary.eq", eq.preset.title)) }
         if let correction, correction.enabled { parts.append(correction.name) }
+        if leveling { parts.append(L("leveling.title")) }
         if channels != .stereo { parts.append(channels.title) }
         if balance != 0 { parts.append(balanceSummary(balance)) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
@@ -382,6 +383,7 @@ extension AppAudioSettings {
         if let uid = outputUID { parts.append(LF("summary.output", deviceName(uid))) }
         if multiOutput, !extraOutputUIDs.isEmpty { parts.append(L("summary.multi")) }
         if eq.isActive { parts.append(LF("summary.eq", eq.preset.title)) }
+        if leveling { parts.append(L("leveling.title")) }
         if channels != .stereo { parts.append(channels.title) }
         if balance != 0 { parts.append(balanceSummary(balance)) }
         if excludeFromGlobal { parts.append(L("summary.excluded")) }

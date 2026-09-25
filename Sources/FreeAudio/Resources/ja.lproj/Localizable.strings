@@ -175,6 +175,8 @@
 "channels.stereo" = "ステレオ";
 "channels.mono" = "モノラル";
 "channels.swapped" = "左右を入れ替え";
+"leveling.title" = "ナイトモード";
+"leveling.help" = "大きな音を抑えて小さな音を持ち上げ、小さな音量でもせりふを聞き取りやすくします";
 "correction.title" = "ヘッドフォン補正";
 "correction.none" = "なし";
 "correction.import_file" = "ファイルから読み込む…";
