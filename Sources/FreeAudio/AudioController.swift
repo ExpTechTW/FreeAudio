@@ -463,7 +463,7 @@ final class AudioController: ObservableObject {
         } else if direction == .output, silencers[device.uid] == nil, !ownProcesses.isEmpty {
             // No mute or volume control (e.g. HDMI): mute everything playing to it with a tap.
             let control = StageControl()
-            control.update(gainLeft: 0, gainRight: 0, eq: EQSettings())
+            control.update(StageSetup(gainLeft: 0, gainRight: 0))
             let key = RouteKey(source: .system, deviceUID: device.uid, tapDeviceUID: device.uid)
             let spec = RouteSpec(key: key, processes: ownProcesses.sorted(), mute: .muted)
             silencers[device.uid] = try? AudioRoute(spec: spec, appControl: nil, deviceControl: control)
@@ -1152,17 +1152,13 @@ final class AudioController: ObservableObject {
 
     private func configureAppControl(_ id: String) {
         guard let control = appControls[id] else { return }
-        let settings = state.apps[id] ?? AppAudioSettings()
-        let gain = settings.muted || appOutputMissing(id) ? 0 : settings.volume
-        let balance = settings.balance.balanceGains
-        control.update(gainLeft: gain * balance.left, gainRight: gain * balance.right, eq: settings.eq)
+        var stage = (state.apps[id] ?? AppAudioSettings()).stage
+        if appOutputMissing(id) { (stage.gainLeft, stage.gainRight) = (0, 0) }
+        control.update(stage)
     }
 
     private func configureDeviceControl(_ uid: String) {
-        guard let control = deviceControls[uid] else { return }
-        let settings = deviceSettings(for: uid)
-        let balance = settings.balance.balanceGains
-        control.update(gainLeft: settings.gain * balance.left, gainRight: settings.gain * balance.right, eq: settings.eq)
+        deviceControls[uid]?.update(deviceSettings(for: uid).stage)
     }
 
     /// Routes are built for the device's sample rate, so they're rebuilt when it changes.

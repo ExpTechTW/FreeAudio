@@ -171,6 +171,15 @@
 "about.license" = "ライセンス";
 "about.license_summary" = "FreeAudio Public License：ソースコードは公開されていて読むことも貢献することもできますが、商用利用と、FreeAudio と競合する製品の作成は禁止されています。";
 "about.read_license" = "ライセンスを読む";
+"correction.title" = "ヘッドフォン補正";
+"correction.none" = "なし";
+"correction.import_file" = "ファイルから読み込む…";
+"correction.paste" = "クリップボードからペースト";
+"correction.remove" = "削除";
+"correction.pasted" = "クリップボード";
+"correction.help" = "AutoEq がヘッドフォンの機種ごとに公開している ParametricEQ.txt を読み込み、音のバランスを補正します";
+"correction.filters" = "%d 個のフィルタ";
+"correction.invalid" = "パラメトリックイコライザの設定が見つかりません。AutoEq の ParametricEQ.txt を使ってください。";
 
 "tray.back" = "戻る";
 "tray.per_app_off" = "アプリ別音量はオフです。";

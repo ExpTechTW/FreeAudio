@@ -350,6 +350,7 @@ extension DeviceAudioSettings {
     var summary: String? {
         var parts: [String] = []
         if eq.isActive { parts.append(LF("summary.eq", eq.preset.title)) }
+        if let correction, correction.enabled { parts.append(correction.name) }
         if balance != 0 { parts.append(balanceSummary(balance)) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }

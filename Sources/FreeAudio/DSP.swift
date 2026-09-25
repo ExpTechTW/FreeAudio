@@ -11,39 +11,104 @@ enum Equalizer {
     static let bandCount = frequencies.count
     static let gainRange = -12.0...12.0
     /// One-octave bandwidth for the peaking filters.
-    fileprivate static let q = 1.41
+    static let q = 1.41
 }
 
-/// Gain and EQ for one processing stage, as published to the audio threads.
+/// Filter shapes from the Audio EQ Cookbook, the ones AutoEq and Equalizer APO profiles use.
+enum FilterKind: Int, Codable, Sendable {
+    case peak, lowShelf, highShelf, lowPass, highPass
+}
+
+struct Filter: Codable, Equatable, Sendable {
+    var kind: FilterKind
+    var frequency: Double
+    /// In dB; the pass filters have none.
+    var gain = 0.0
+    var q = 0.7071
+}
+
+/// Up to `capacity` filters, stored flat so the audio thread can copy them without allocating. The graphic
+/// equalizer's bands take the first slots and headphone correction the rest.
+struct FilterSet: Equatable, Sendable {
+    static let capacity = 32
+    static let correctionCapacity = capacity - Equalizer.bandCount
+
+    /// `FilterKind` raw values; -1 marks an empty slot.
+    private var kinds = SIMD32<Float>(repeating: -1)
+    private var frequencies = SIMD32<Float>()
+    private var gains = SIMD32<Float>()
+    private var qs = SIMD32<Float>()
+
+    subscript(slot: Int) -> Filter? {
+        get {
+            guard kinds[slot] >= 0, let kind = FilterKind(rawValue: Int(kinds[slot])) else { return nil }
+            return Filter(kind: kind, frequency: Double(frequencies[slot]), gain: Double(gains[slot]), q: Double(qs[slot]))
+        }
+        set {
+            kinds[slot] = newValue.map { Float($0.kind.rawValue) } ?? -1
+            frequencies[slot] = Float(newValue?.frequency ?? 0)
+            gains[slot] = Float(newValue?.gain ?? 0)
+            qs[slot] = Float(newValue?.q ?? 0)
+        }
+    }
+
+    /// Whether any filter raises a band, so the output can go over full scale.
+    func boosts() -> Bool {
+        (0..<Self.capacity).contains { slot in
+            guard let filter = self[slot] else { return false }
+            return filter.kind != .lowPass && filter.kind != .highPass && filter.gain > 0
+        }
+    }
+}
+
+/// Everything a stage does, as the settings describe it.
+struct StageSetup: Equatable, Sendable {
+    var gainLeft = 1.0
+    var gainRight = 1.0
+    var eq = EQSettings()
+    var correction: HeadphoneCorrection?
+}
+
+/// A stage's settings as published to the audio threads.
 struct StageParameters: Sendable {
     var gainLeft: Float = 1
     var gainRight: Float = 1
-    var eqEnabled = false
-    var eqGains = SIMD16<Float>()
-    var eqGeneration: UInt32 = 0
+    var filters = FilterSet()
+    var filtersBoost = false
+    /// Changes whenever `filters` does, so the audio thread only works out coefficients then.
+    var filterGeneration: UInt32 = 0
 
-    var canBoost: Bool {
-        max(gainLeft, gainRight) > 1 || (eqEnabled && eqGains.max() > 0)
-    }
+    var canBoost: Bool { max(gainLeft, gainRight) > 1 || filtersBoost }
 }
 
 /// UI-side handle for a stage. Audio threads read it with a try-lock and never block.
 final class StageControl: Sendable {
     private let parameters = OSAllocatedUnfairLock(initialState: StageParameters())
 
-    func update(gainLeft: Double, gainRight: Double, eq: EQSettings) {
-        var bands = SIMD16<Float>()
-        for (band, gain) in eq.gains.prefix(Equalizer.bandCount).enumerated() { bands[band] = Float(gain) }
-        let gains = bands
-        let enabled = eq.isActive
-        let preamp = enabled ? Float(pow(10, eq.preamp / 20)) : 1
+    func update(_ setup: StageSetup) {
+        var filters = FilterSet()
+        var preamp = 0.0
+        if setup.eq.isActive {
+            for (band, gain) in setup.eq.gains.prefix(Equalizer.bandCount).enumerated() where gain != 0 {
+                filters[band] = Filter(kind: .peak, frequency: Equalizer.frequencies[band], gain: gain, q: Equalizer.q)
+            }
+            preamp += setup.eq.preamp
+        }
+        if let correction = setup.correction, correction.enabled {
+            for (index, filter) in correction.filters.prefix(FilterSet.correctionCapacity).enumerated() {
+                filters[Equalizer.bandCount + index] = filter
+            }
+            preamp += correction.preamp
+        }
+        let scale = Float(pow(10, preamp / 20))
+        let bank = filters, boosts = filters.boosts()
         parameters.withLock {
-            $0.gainLeft = Float(gainLeft) * preamp
-            $0.gainRight = Float(gainRight) * preamp
-            if $0.eqEnabled != enabled || $0.eqGains != gains {
-                $0.eqEnabled = enabled
-                $0.eqGains = gains
-                $0.eqGeneration &+= 1
+            $0.gainLeft = Float(setup.gainLeft) * scale
+            $0.gainRight = Float(setup.gainRight) * scale
+            if $0.filters != bank {
+                $0.filters = bank
+                $0.filtersBoost = boosts
+                $0.filterGeneration &+= 1
             }
         }
     }
@@ -61,18 +126,52 @@ struct Biquad {
     /// Passes the sound through unchanged.
     init() {}
 
-    /// Audio EQ Cookbook peaking filter; `nil` where it changes nothing (0 dB, or too close to Nyquist to shape).
-    init?(peak frequency: Double, gain: Double, q: Double, sampleRate: Double) {
-        guard gain != 0, frequency < sampleRate * 0.45 else { return nil }
+    /// Coefficients normalised so a0 is 1.
+    init(b: (Double, Double, Double), a: (Double, Double)) {
+        (b0, b1, b2) = b
+        (a1, a2) = a
+    }
+
+    /// The Audio EQ Cookbook's filters, as AutoEq computes them; `nil` where one changes nothing (0 dB) or can't be
+    /// made (at or past 0.45 of the sample rate, or with a frequency or Q that isn't positive).
+    init?(_ filter: Filter, sampleRate: Double) {
+        let passes = filter.kind == .lowPass || filter.kind == .highPass
+        guard filter.frequency > 0, filter.q > 0, filter.frequency < sampleRate * 0.45, passes || filter.gain != 0 else { return nil }
+        let omega = 2 * Double.pi * filter.frequency / sampleRate
+        let cosine = cos(omega)
+        let alpha = sin(omega) / (2 * filter.q)
+        let amplitude = pow(10, filter.gain / 40)
+        let root = 2 * amplitude.squareRoot() * alpha
+        let (b, a0, a): ((Double, Double, Double), Double, (Double, Double))
+        switch filter.kind {
+        case .peak:
+            b = (1 + alpha * amplitude, -2 * cosine, 1 - alpha * amplitude)
+            (a0, a) = (1 + alpha / amplitude, (-2 * cosine, 1 - alpha / amplitude))
+        case .lowShelf:
+            let (plus, minus) = (amplitude + 1, amplitude - 1)
+            b = (amplitude * (plus - minus * cosine + root), 2 * amplitude * (minus - plus * cosine), amplitude * (plus - minus * cosine - root))
+            (a0, a) = (plus + minus * cosine + root, (-2 * (minus + plus * cosine), plus + minus * cosine - root))
+        case .highShelf:
+            let (plus, minus) = (amplitude + 1, amplitude - 1)
+            b = (amplitude * (plus + minus * cosine + root), -2 * amplitude * (minus + plus * cosine), amplitude * (plus + minus * cosine - root))
+            (a0, a) = (plus - minus * cosine + root, (2 * (minus - plus * cosine), plus - minus * cosine - root))
+        case .lowPass:
+            b = ((1 - cosine) / 2, 1 - cosine, (1 - cosine) / 2)
+            (a0, a) = (1 + alpha, (-2 * cosine, 1 - alpha))
+        case .highPass:
+            b = ((1 + cosine) / 2, -(1 + cosine), (1 + cosine) / 2)
+            (a0, a) = (1 + alpha, (-2 * cosine, 1 - alpha))
+        }
+        self.init(b: (b.0 / a0, b.1 / a0, b.2 / a0), a: (a.0 / a0, a.1 / a0))
+    }
+
+    /// |H| at `frequency`.
+    func magnitude(at frequency: Double, sampleRate: Double) -> Double {
         let omega = 2 * Double.pi * frequency / sampleRate
-        let amplitude = pow(10, gain / 40)
-        let alpha = sin(omega) / (2 * q)
-        let a0 = 1 + alpha / amplitude
-        b0 = (1 + alpha * amplitude) / a0
-        b1 = -2 * cos(omega) / a0
-        b2 = (1 - alpha * amplitude) / a0
-        a1 = b1
-        a2 = (1 - alpha / amplitude) / a0
+        let (c1, s1, c2, s2) = (cos(omega), sin(omega), cos(2 * omega), sin(2 * omega))
+        let numerator = (b0 + b1 * c1 + b2 * c2, b1 * s1 + b2 * s2)
+        let denominator = (1 + a1 * c1 + a2 * c2, a1 * s1 + a2 * s2)
+        return ((numerator.0 * numerator.0 + numerator.1 * numerator.1) / (denominator.0 * denominator.0 + denominator.1 * denominator.1)).squareRoot()
     }
 
     @inline(__always)
@@ -116,21 +215,21 @@ final class StageProcessor {
     private var generation: UInt32
     private var gainLeft: Float
     private var gainRight: Float
-    /// A section per band, so a band keeps its state while its gain moves.
-    private let sections = UnsafeMutablePointer<Biquad>.allocate(capacity: Equalizer.bandCount)
-    /// The bands that change the sound, in order; flat ones are skipped.
-    private let active = UnsafeMutablePointer<Int>.allocate(capacity: Equalizer.bandCount)
+    /// A section per slot, so a filter keeps its state while its settings move.
+    private let sections = UnsafeMutablePointer<Biquad>.allocate(capacity: FilterSet.capacity)
+    /// The slots that change the sound, in order; empty and flat ones are skipped.
+    private let active = UnsafeMutablePointer<Int>.allocate(capacity: FilterSet.capacity)
     private var activeCount = 0
 
     init(control: StageControl, sampleRate: Double) {
         self.control = control
         self.sampleRate = sampleRate
         parameters = control.current
-        generation = parameters.eqGeneration &- 1
+        generation = parameters.filterGeneration &- 1
         gainLeft = parameters.gainLeft
         gainRight = parameters.gainRight
-        sections.initialize(repeating: Biquad(), count: Equalizer.bandCount)
-        active.initialize(repeating: 0, count: Equalizer.bandCount)
+        sections.initialize(repeating: Biquad(), count: FilterSet.capacity)
+        active.initialize(repeating: 0, count: FilterSet.capacity)
     }
 
     deinit {
@@ -144,7 +243,7 @@ final class StageProcessor {
     /// Pulls the latest parameters; call once per IO cycle before `process`.
     func refresh() {
         if let latest = control.snapshot() { parameters = latest }
-        if parameters.eqGeneration != generation { updateCoefficients() }
+        if parameters.filterGeneration != generation { updateCoefficients() }
     }
 
     func process(_ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>, frames: Int) {
@@ -157,26 +256,26 @@ final class StageProcessor {
 
     private func updateCoefficients() {
         var count = 0
-        for band in 0..<Equalizer.bandCount {
-            guard parameters.eqEnabled, let section = Biquad(
-                peak: Equalizer.frequencies[band], gain: Double(parameters.eqGains[band]), q: Equalizer.q, sampleRate: sampleRate
-            ) else { continue }
-            // A band that was flat starts from silence rather than from its state of long ago.
-            if !(0..<activeCount).contains(where: { active[$0] == band }) { sections[band] = section }
-            sections[band].takeCoefficients(of: section)
-            active[count] = band
+        for slot in 0..<FilterSet.capacity {
+            guard let filter = parameters.filters[slot], let section = Biquad(filter, sampleRate: sampleRate) else { continue }
+            // A slot that was off starts from silence rather than from its state of long ago.
+            if !(0..<activeCount).contains(where: { active[$0] == slot }) { sections[slot] = section }
+            sections[slot].takeCoefficients(of: section)
+            active[count] = slot
             count += 1
         }
         activeCount = count
-        generation = parameters.eqGeneration
+        generation = parameters.filterGeneration
     }
 
     private static func applyGain(_ samples: UnsafeMutablePointer<Float>, frames: Int, from start: Float, to end: Float) {
         if start == end {
-            guard end != 1 else { return }
-            var gain = end
-            vDSP_vsmul(samples, 1, &gain, samples, 1, vDSP_Length(frames))
+            if end != 1 {
+                var gain = end
+                vDSP_vsmul(samples, 1, &gain, samples, 1, vDSP_Length(frames))
+            }
         } else {
+            // Ramp across the block so volume changes don't click.
             var gain = start
             var step = (end - start) / Float(frames)
             vDSP_vrampmul(samples, 1, &gain, &step, samples, 1, vDSP_Length(frames))

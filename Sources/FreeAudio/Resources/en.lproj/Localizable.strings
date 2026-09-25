@@ -171,6 +171,15 @@
 "about.license" = "License";
 "about.license_summary" = "FreeAudio Public License: the source code is public to read and contribute to, but commercial use is prohibited, and so is building a product that competes with FreeAudio.";
 "about.read_license" = "Read the License";
+"correction.title" = "Headphone Correction";
+"correction.none" = "None";
+"correction.import_file" = "Import from File…";
+"correction.paste" = "Paste from Clipboard";
+"correction.remove" = "Remove";
+"correction.pasted" = "Clipboard";
+"correction.help" = "Import the ParametricEQ.txt that AutoEq publishes for your headphone model, to even out its sound";
+"correction.filters" = "%d filters";
+"correction.invalid" = "No parametric equalizer settings found. Use AutoEq's ParametricEQ.txt.";
 
 "tray.back" = "Back";
 "tray.per_app_off" = "Per-app volume is off.";

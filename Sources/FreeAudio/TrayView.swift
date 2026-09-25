@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// What the panel shows: the overview, or everything about one app or output device.
 private enum TrayPage: Equatable {
@@ -588,6 +589,7 @@ private struct DevicePage: View {
     @EnvironmentObject private var audio: AudioController
     let device: AudioDevice
     let back: () -> Void
+    @State private var correctionError = false
 
     var body: some View {
         let settings = audio.deviceSettings(for: device.uid)
@@ -622,6 +624,10 @@ private struct DevicePage: View {
                 }
             }
 
+            Card(title: L("correction.title")) {
+                correction(settings.correction)
+            }
+
             Card {
                 EqualizerPanel(settings: settings.eq) { eq in audio.updateDeviceSettings(for: device) { $0.eq = eq } }
             }
@@ -631,6 +637,61 @@ private struct DevicePage: View {
                 .disabled(settings.isDefault)
                 .frame(maxWidth: .infinity)
         }
+    }
+
+    /// Headphone correction from an AutoEq profile.
+    @ViewBuilder private func correction(_ correction: HeadphoneCorrection?) -> some View {
+        HStack(spacing: 8) {
+            Menu(correction?.name ?? L("correction.none")) {
+                Button(L("correction.import_file")) { importCorrection(fromFile: true) }
+                Button(L("correction.paste")) { importCorrection(fromFile: false) }
+                if correction != nil {
+                    Divider()
+                    Button(L("correction.remove"), role: .destructive) {
+                        audio.updateDeviceSettings(for: device) { $0.correction = nil }
+                    }
+                }
+            }
+            .menuStyle(.button)
+            .controlSize(.small)
+            .fixedSize()
+            Spacer(minLength: 4)
+            if let correction {
+                Toggle(L("correction.title"), isOn: Binding(
+                    get: { correction.enabled },
+                    set: { on in audio.updateDeviceSettings(for: device) { $0.correction?.enabled = on } }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .labelsHidden()
+            }
+        }
+        Text(correctionError ? L("correction.invalid") : correction.map { LF("correction.filters", $0.filters.count) } ?? L("correction.help"))
+            .font(.caption)
+            .foregroundStyle(correctionError ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func importCorrection(fromFile: Bool) {
+        var text: String?, name = L("correction.pasted")
+        if fromFile {
+            let panel = NSOpenPanel()
+            panel.allowedContentTypes = [.plainText]
+            NSApp.activate()
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            text = try? String(contentsOf: url, encoding: .utf8)
+            // "Sennheiser HD 600 ParametricEQ.txt" is the Sennheiser HD 600.
+            name = url.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "ParametricEQ", with: "")
+                .trimmingCharacters(in: .whitespaces.union(.punctuationCharacters))
+        } else {
+            text = NSPasteboard.general.string(forType: .string)
+        }
+        guard let profile = text.flatMap({ HeadphoneCorrection.parse($0, name: name.isEmpty ? L("correction.title") : name) }) else {
+            correctionError = true
+            return
+        }
+        correctionError = false
+        audio.updateDeviceSettings(for: device) { $0.correction = profile }
     }
 }
 

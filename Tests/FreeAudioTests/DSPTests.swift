@@ -37,7 +37,7 @@ private func decibels(_ ratio: Double) -> Double { 20 * log10(ratio) }
 
 private func control(gain: Double = 1, left: Double? = nil, right: Double? = nil, eq: EQSettings = EQSettings()) -> StageControl {
     let control = StageControl()
-    control.update(gainLeft: left ?? gain, gainRight: right ?? gain, eq: eq)
+    control.update(StageSetup(gainLeft: left ?? gain, gainRight: right ?? gain, eq: eq))
     return control
 }
 
@@ -88,7 +88,7 @@ private func control(gain: Double = 1, left: Double? = nil, right: Double? = nil
         defer { left.deallocate(); right.deallocate() }
         left.update(repeating: 1, count: 512); right.update(repeating: 1, count: 512)
         stage.refresh(); stage.process(left, right, frames: 512)
-        control.update(gainLeft: 0, gainRight: 0, eq: EQSettings())
+        control.update(StageSetup(gainLeft: 0, gainRight: 0))
         left.update(repeating: 1, count: 512); right.update(repeating: 1, count: 512)
         stage.refresh(); stage.process(left, right, frames: 512)
         let largestStep = (1..<512).map { abs(left[$0] - left[$0 - 1]) }.max() ?? 1
@@ -393,5 +393,43 @@ private func renderer(
         #expect(settings.isSilenced)
         settings.volume = 1.2
         #expect(settings.needsProcessing && !settings.isSilenced)
+    }
+}
+
+@Suite struct FilterTests {
+    private func gain(_ filter: Filter, at frequency: Double) throws -> Double {
+        decibels(try #require(Biquad(filter, sampleRate: sampleRate)).magnitude(at: frequency, sampleRate: sampleRate))
+    }
+
+    @Test func shelvesAndPassesHaveTheirShapes() throws {
+        let low = Filter(kind: .lowShelf, frequency: 105, gain: 6, q: 0.7)
+        let (lowBass, lowTreble) = (try gain(low, at: 20), try gain(low, at: 5_000))
+        #expect(abs(lowBass - 6) < 0.3 && abs(lowTreble) < 0.05)
+        let high = Filter(kind: .highShelf, frequency: 8_000, gain: -4, q: 0.7)
+        let (highTreble, highBass) = (try gain(high, at: 20_000), try gain(high, at: 200))
+        #expect(abs(highTreble + 4) < 0.3 && abs(highBass) < 0.05)
+        let highPass = Filter(kind: .highPass, frequency: 100, q: 0.7071)
+        let (below, above, corner) = (try gain(highPass, at: 20), try gain(highPass, at: 2_000), try gain(highPass, at: 100))
+        #expect(below < -25 && abs(above) < 0.05 && abs(corner + 3.01) < 0.05)
+        let lowPass = Filter(kind: .lowPass, frequency: 2_000, q: 0.7071)
+        let (cut, kept) = (try gain(lowPass, at: 10_000), try gain(lowPass, at: 100))
+        #expect(cut < -25 && abs(kept) < 0.05)
+    }
+
+    @Test func flatOrUnreachableFiltersAreLeftOut() {
+        #expect(Biquad(Filter(kind: .peak, frequency: 1_000, gain: 0, q: 1), sampleRate: sampleRate) == nil)
+        #expect(Biquad(Filter(kind: .peak, frequency: 23_000, gain: 3, q: 1), sampleRate: sampleRate) == nil)
+        #expect(Biquad(Filter(kind: .lowPass, frequency: 1_000, q: 0), sampleRate: sampleRate) == nil)
+    }
+
+    @Test func headphoneCorrectionAppliesItsFiltersAndPreamp() {
+        var correction = HeadphoneCorrection(name: "Test", preamp: -3, filters: [Filter(kind: .peak, frequency: 1_000, gain: 6, q: 1)])
+        let control = StageControl()
+        control.update(StageSetup(correction: correction))
+        #expect(abs(decibels(response(control, frequency: 1_000).left) - 3) < 0.1)
+        #expect(abs(decibels(response(control, frequency: 100).left) + 3) < 0.1)
+        correction.enabled = false
+        control.update(StageSetup(correction: correction))
+        #expect(abs(decibels(response(control, frequency: 1_000).left)) < 0.01)
     }
 }

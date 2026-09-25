@@ -113,6 +113,11 @@ struct AppAudioSettings: Codable, Equatable, Sendable {
     var needsProcessing: Bool { muted || volume != 1 || balance != 0 || eq.isActive }
     var isDefault: Bool { self == AppAudioSettings() }
 
+    var stage: StageSetup {
+        let gain = muted ? 0 : volume, sides = balance.balanceGains
+        return StageSetup(gainLeft: gain * sides.left, gainRight: gain * sides.right, eq: eq)
+    }
+
     /// Checks or unchecks a device to play the app on as well. Checking one turns multi-output on, and unchecking
     /// the last turns it off; devices checked before it was last turned off don't come back.
     mutating func toggleExtraOutput(_ uid: String) {
@@ -148,10 +153,16 @@ struct DeviceAudioSettings: Codable, Equatable, Sendable {
     /// when the device has no mute control either. Devices with their own controls keep 100% and unmuted here.
     var volume = 1.0
     var muted = false
+    var correction: HeadphoneCorrection?
 
     var gain: Double { muted ? 0 : volume }
-    var needsProcessing: Bool { balance != 0 || eq.isActive || gain != 1 }
+    var needsProcessing: Bool { balance != 0 || eq.isActive || gain != 1 || correction?.enabled == true }
     var isDefault: Bool { self == DeviceAudioSettings() }
+
+    var stage: StageSetup {
+        let sides = balance.balanceGains
+        return StageSetup(gainLeft: gain * sides.left, gainRight: gain * sides.right, eq: eq, correction: correction)
+    }
 
     init() {}
 
@@ -161,6 +172,7 @@ struct DeviceAudioSettings: Codable, Equatable, Sendable {
         try container.update(&eq, .eq)
         try container.update(&volume, .volume)
         try container.update(&muted, .muted)
+        correction = try container.decodeIfPresent(HeadphoneCorrection.self, forKey: .correction)
     }
 }
 
