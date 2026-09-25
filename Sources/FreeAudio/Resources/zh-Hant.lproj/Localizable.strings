@@ -171,6 +171,10 @@
 "about.license" = "授權";
 "about.license_summary" = "FreeAudio Public License：原始碼公開，可以閱讀與貢獻，但禁止商業使用，也禁止用來做出與 FreeAudio 競爭的產品。";
 "about.read_license" = "閱讀授權條款";
+"channels.title" = "聲道";
+"channels.stereo" = "立體聲";
+"channels.mono" = "單聲道";
+"channels.swapped" = "左右互換";
 "correction.title" = "耳機校正";
 "correction.none" = "未使用";
 "correction.import_file" = "從檔案匯入…";

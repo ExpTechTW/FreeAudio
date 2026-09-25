@@ -343,6 +343,24 @@ struct BalanceSlider: View {
     }
 }
 
+/// Stereo, mono, or left and right swapped.
+struct ChannelRow: View {
+    let mode: ChannelMode
+    let onChange: (ChannelMode) -> Void
+
+    var body: some View {
+        LabeledRow(L("channels.title")) {
+            Picker(L("channels.title"), selection: Binding(get: { mode }, set: onChange)) {
+                ForEach(ChannelMode.allCases) { Text($0.title).tag($0) }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .controlSize(.small)
+            .fixedSize()
+        }
+    }
+}
+
 // MARK: - Summaries
 
 extension DeviceAudioSettings {
@@ -351,6 +369,7 @@ extension DeviceAudioSettings {
         var parts: [String] = []
         if eq.isActive { parts.append(LF("summary.eq", eq.preset.title)) }
         if let correction, correction.enabled { parts.append(correction.name) }
+        if channels != .stereo { parts.append(channels.title) }
         if balance != 0 { parts.append(balanceSummary(balance)) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
@@ -363,6 +382,7 @@ extension AppAudioSettings {
         if let uid = outputUID { parts.append(LF("summary.output", deviceName(uid))) }
         if multiOutput, !extraOutputUIDs.isEmpty { parts.append(L("summary.multi")) }
         if eq.isActive { parts.append(LF("summary.eq", eq.preset.title)) }
+        if channels != .stereo { parts.append(channels.title) }
         if balance != 0 { parts.append(balanceSummary(balance)) }
         if excludeFromGlobal { parts.append(L("summary.excluded")) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")

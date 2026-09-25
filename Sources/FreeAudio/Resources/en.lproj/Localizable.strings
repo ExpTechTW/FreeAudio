@@ -171,6 +171,10 @@
 "about.license" = "License";
 "about.license_summary" = "FreeAudio Public License: the source code is public to read and contribute to, but commercial use is prohibited, and so is building a product that competes with FreeAudio.";
 "about.read_license" = "Read the License";
+"channels.title" = "Channels";
+"channels.stereo" = "Stereo";
+"channels.mono" = "Mono";
+"channels.swapped" = "Left and Right Swapped";
 "correction.title" = "Headphone Correction";
 "correction.none" = "None";
 "correction.import_file" = "Import from File…";

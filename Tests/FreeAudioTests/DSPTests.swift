@@ -433,3 +433,30 @@ private func renderer(
         #expect(abs(decibels(response(control, frequency: 1_000).left)) < 0.01)
     }
 }
+
+@Suite struct StageEffectTests {
+    private func run(_ setup: StageSetup, left: Float, right: Float, blocks: Int = 1) -> (left: Float, right: Float) {
+        let control = StageControl()
+        control.update(setup)
+        let stage = StageProcessor(control: control, sampleRate: sampleRate)
+        let l = UnsafeMutablePointer<Float>.allocate(capacity: 512), r = UnsafeMutablePointer<Float>.allocate(capacity: 512)
+        defer { l.deallocate(); r.deallocate() }
+        for _ in 0..<blocks {
+            l.update(repeating: left, count: 512)
+            r.update(repeating: right, count: 512)
+            stage.refresh()
+            stage.process(l, r, frames: 512)
+        }
+        return (l[511], r[511])
+    }
+
+    @Test func channelModes() {
+        let mono = run(StageSetup(channels: .mono), left: 0.4, right: 0.2)
+        #expect(abs(mono.left - 0.3) < 1e-6 && abs(mono.right - 0.3) < 1e-6)
+        let swapped = run(StageSetup(channels: .swapped), left: 0.4, right: 0.2)
+        #expect(swapped.left == 0.2 && swapped.right == 0.4)
+        // Balance still applies after the channels are mixed.
+        let panned = run(StageSetup(gainLeft: 1, gainRight: 0.5, channels: .mono), left: 0.4, right: 0.2)
+        #expect(abs(panned.left - 0.3) < 1e-6 && abs(panned.right - 0.15) < 1e-6)
+    }
+}

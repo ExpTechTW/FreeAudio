@@ -14,6 +14,13 @@ enum Equalizer {
     static let q = 1.41
 }
 
+/// How a stage passes the two channels on.
+enum ChannelMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case stereo, mono, swapped
+    var id: Self { self }
+    var title: String { L("channels.\(rawValue)") }
+}
+
 /// Filter shapes from the Audio EQ Cookbook, the ones AutoEq and Equalizer APO profiles use.
 enum FilterKind: Int, Codable, Sendable {
     case peak, lowShelf, highShelf, lowPass, highPass
@@ -67,12 +74,14 @@ struct StageSetup: Equatable, Sendable {
     var gainRight = 1.0
     var eq = EQSettings()
     var correction: HeadphoneCorrection?
+    var channels = ChannelMode.stereo
 }
 
 /// A stage's settings as published to the audio threads.
 struct StageParameters: Sendable {
     var gainLeft: Float = 1
     var gainRight: Float = 1
+    var channels = ChannelMode.stereo
     var filters = FilterSet()
     var filtersBoost = false
     /// Changes whenever `filters` does, so the audio thread only works out coefficients then.
@@ -105,6 +114,7 @@ final class StageControl: Sendable {
         parameters.withLock {
             $0.gainLeft = Float(setup.gainLeft) * scale
             $0.gainRight = Float(setup.gainRight) * scale
+            $0.channels = setup.channels
             if $0.filters != bank {
                 $0.filters = bank
                 $0.filtersBoost = boosts
@@ -247,6 +257,16 @@ final class StageProcessor {
     }
 
     func process(_ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>, frames: Int) {
+        switch parameters.channels {
+        case .stereo:
+            break
+        case .mono:
+            var half: Float = 0.5
+            vDSP_vasm(left, 1, right, 1, &half, left, 1, vDSP_Length(frames))
+            right.update(from: left, count: frames)
+        case .swapped:
+            vDSP_vswap(left, 1, right, 1, vDSP_Length(frames))
+        }
         if activeCount > 0 { filter(left, right, frames: frames, sections, active, count: activeCount) }
         Self.applyGain(left, frames: frames, from: gainLeft, to: parameters.gainLeft)
         Self.applyGain(right, frames: frames, from: gainRight, to: parameters.gainRight)

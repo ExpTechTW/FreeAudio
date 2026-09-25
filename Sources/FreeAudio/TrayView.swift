@@ -571,6 +571,7 @@ private struct AppPage: View {
                 LabeledRow(L("balance.help")) {
                     BalanceSlider(value: settings.balance) { value in audio.updateSettings(for: app) { $0.balance = value } }
                 }
+                ChannelRow(mode: settings.channels) { mode in audio.updateSettings(for: app) { $0.channels = mode } }
             }
 
             Card {
@@ -622,6 +623,7 @@ private struct DevicePage: View {
                 LabeledRow(L("balance.help")) {
                     BalanceSlider(value: settings.balance) { value in audio.updateDeviceSettings(for: device) { $0.balance = value } }
                 }
+                ChannelRow(mode: settings.channels) { mode in audio.updateDeviceSettings(for: device) { $0.channels = mode } }
             }
 
             Card(title: L("correction.title")) {

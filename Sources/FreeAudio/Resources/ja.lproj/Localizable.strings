@@ -171,6 +171,10 @@
 "about.license" = "ライセンス";
 "about.license_summary" = "FreeAudio Public License：ソースコードは公開されていて読むことも貢献することもできますが、商用利用と、FreeAudio と競合する製品の作成は禁止されています。";
 "about.read_license" = "ライセンスを読む";
+"channels.title" = "チャンネル";
+"channels.stereo" = "ステレオ";
+"channels.mono" = "モノラル";
+"channels.swapped" = "左右を入れ替え";
 "correction.title" = "ヘッドフォン補正";
 "correction.none" = "なし";
 "correction.import_file" = "ファイルから読み込む…";
