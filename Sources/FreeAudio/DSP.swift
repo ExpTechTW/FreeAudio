@@ -52,6 +52,62 @@ final class StageControl: Sendable {
     func snapshot() -> StageParameters? { parameters.withLockIfAvailable { $0 } }
 }
 
+/// One second-order section (transposed direct form II) filtering both channels at once: left and right sit side
+/// by side in the lanes of a `SIMD2`. Doubles keep the lowest bands accurate.
+struct Biquad {
+    var b0 = 1.0, b1 = 0.0, b2 = 0.0, a1 = 0.0, a2 = 0.0
+    var z1 = SIMD2<Double>.zero, z2 = SIMD2<Double>.zero
+
+    /// Passes the sound through unchanged.
+    init() {}
+
+    /// Audio EQ Cookbook peaking filter; `nil` where it changes nothing (0 dB, or too close to Nyquist to shape).
+    init?(peak frequency: Double, gain: Double, q: Double, sampleRate: Double) {
+        guard gain != 0, frequency < sampleRate * 0.45 else { return nil }
+        let omega = 2 * Double.pi * frequency / sampleRate
+        let amplitude = pow(10, gain / 40)
+        let alpha = sin(omega) / (2 * q)
+        let a0 = 1 + alpha / amplitude
+        b0 = (1 + alpha * amplitude) / a0
+        b1 = -2 * cos(omega) / a0
+        b2 = (1 - alpha * amplitude) / a0
+        a1 = b1
+        a2 = (1 - alpha / amplitude) / a0
+    }
+
+    @inline(__always)
+    mutating func process(_ x: SIMD2<Double>) -> SIMD2<Double> {
+        let y = b0 * x + z1
+        z1 = b1 * x - a1 * y + z2
+        z2 = b2 * x - a2 * y
+        return y
+    }
+
+    mutating func takeCoefficients(of other: Biquad) {
+        (b0, b1, b2, a1, a2) = (other.b0, other.b1, other.b2, other.a1, other.a2)
+    }
+
+    /// Clears denormals, and whatever a blow-up left behind.
+    mutating func settle() {
+        func settled(_ value: Double) -> Double { value.isFinite && abs(value) > 1e-18 ? value : 0 }
+        z1 = SIMD2(settled(z1.x), settled(z1.y))
+        z2 = SIMD2(settled(z2.x), settled(z2.y))
+    }
+}
+
+/// Runs a chain of sections sample by sample: the recursions of different sections don't wait on each other, so the
+/// processor overlaps them, and each sample is converted to and from `Double` only once.
+private func filter(_ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>, frames: Int,
+                    _ sections: UnsafeMutablePointer<Biquad>, _ order: UnsafePointer<Int>, count: Int) {
+    for i in 0..<frames {
+        var x = SIMD2(Double(left[i]), Double(right[i]))
+        for j in 0..<count { x = sections[order[j]].process(x) }
+        left[i] = Float(x.x)
+        right[i] = Float(x.y)
+    }
+    for j in 0..<count { sections[order[j]].settle() }
+}
+
 /// Filter and gain state for one stage of one route. Only the route's IO thread touches it.
 final class StageProcessor {
     private let control: StageControl
@@ -60,13 +116,11 @@ final class StageProcessor {
     private var generation: UInt32
     private var gainLeft: Float
     private var gainRight: Float
-    private var activeBands: UInt16 = 0
-    /// Per band: cos(w0), alpha for the fixed centre frequency.
-    private let shape = UnsafeMutablePointer<Double>.allocate(capacity: Equalizer.bandCount * 2)
-    /// Per band: b0 b1 b2 a1 a2.
-    private let coefficients = UnsafeMutablePointer<Double>.allocate(capacity: Equalizer.bandCount * 5)
-    /// Per band: left z1 z2, right z1 z2.
-    private let state = UnsafeMutablePointer<Double>.allocate(capacity: Equalizer.bandCount * 4)
+    /// A section per band, so a band keeps its state while its gain moves.
+    private let sections = UnsafeMutablePointer<Biquad>.allocate(capacity: Equalizer.bandCount)
+    /// The bands that change the sound, in order; flat ones are skipped.
+    private let active = UnsafeMutablePointer<Int>.allocate(capacity: Equalizer.bandCount)
+    private var activeCount = 0
 
     init(control: StageControl, sampleRate: Double) {
         self.control = control
@@ -75,20 +129,13 @@ final class StageProcessor {
         generation = parameters.eqGeneration &- 1
         gainLeft = parameters.gainLeft
         gainRight = parameters.gainRight
-        coefficients.initialize(repeating: 0, count: Equalizer.bandCount * 5)
-        state.initialize(repeating: 0, count: Equalizer.bandCount * 4)
-        for (band, frequency) in Equalizer.frequencies.enumerated() {
-            let omega = 2 * Double.pi * frequency / sampleRate
-            // Bands too close to Nyquist are left flat.
-            shape[band * 2] = frequency < sampleRate * 0.45 ? cos(omega) : .nan
-            shape[band * 2 + 1] = sin(omega) / (2 * Equalizer.q)
-        }
+        sections.initialize(repeating: Biquad(), count: Equalizer.bandCount)
+        active.initialize(repeating: 0, count: Equalizer.bandCount)
     }
 
     deinit {
-        shape.deallocate()
-        coefficients.deallocate()
-        state.deallocate()
+        sections.deallocate()
+        active.deallocate()
     }
 
     var canBoost: Bool { parameters.canBoost || max(gainLeft, gainRight) > 1 }
@@ -101,13 +148,7 @@ final class StageProcessor {
     }
 
     func process(_ left: UnsafeMutablePointer<Float>, _ right: UnsafeMutablePointer<Float>, frames: Int) {
-        if activeBands != 0 {
-            for band in 0..<Equalizer.bandCount where activeBands & (1 << band) != 0 {
-                let c = coefficients + band * 5
-                Self.filter(left, frames: frames, c, state + band * 4)
-                Self.filter(right, frames: frames, c, state + band * 4 + 2)
-            }
-        }
+        if activeCount > 0 { filter(left, right, frames: frames, sections, active, count: activeCount) }
         Self.applyGain(left, frames: frames, from: gainLeft, to: parameters.gainLeft)
         Self.applyGain(right, frames: frames, from: gainRight, to: parameters.gainRight)
         gainLeft = parameters.gainLeft
@@ -115,47 +156,19 @@ final class StageProcessor {
     }
 
     private func updateCoefficients() {
-        var active: UInt16 = 0
+        var count = 0
         for band in 0..<Equalizer.bandCount {
-            let gain = Double(parameters.eqGains[band])
-            let cosine = shape[band * 2]
-            guard parameters.eqEnabled, gain != 0, !cosine.isNaN else { continue }
-            if activeBands & (1 << band) == 0 {
-                (state + band * 4).update(repeating: 0, count: 4)
-            }
-            active |= 1 << band
-            let amplitude = pow(10, gain / 40)
-            let alpha = shape[band * 2 + 1]
-            let a0 = 1 + alpha / amplitude
-            let c = coefficients + band * 5
-            c[0] = (1 + alpha * amplitude) / a0
-            c[1] = -2 * cosine / a0
-            c[2] = (1 - alpha * amplitude) / a0
-            c[3] = -2 * cosine / a0
-            c[4] = (1 - alpha / amplitude) / a0
+            guard parameters.eqEnabled, let section = Biquad(
+                peak: Equalizer.frequencies[band], gain: Double(parameters.eqGains[band]), q: Equalizer.q, sampleRate: sampleRate
+            ) else { continue }
+            // A band that was flat starts from silence rather than from its state of long ago.
+            if !(0..<activeCount).contains(where: { active[$0] == band }) { sections[band] = section }
+            sections[band].takeCoefficients(of: section)
+            active[count] = band
+            count += 1
         }
-        activeBands = active
+        activeCount = count
         generation = parameters.eqGeneration
-    }
-
-    private static func filter(
-        _ samples: UnsafeMutablePointer<Float>,
-        frames: Int,
-        _ c: UnsafeMutablePointer<Double>,
-        _ z: UnsafeMutablePointer<Double>
-    ) {
-        let (b0, b1, b2, a1, a2) = (c[0], c[1], c[2], c[3], c[4])
-        var z1 = z[0], z2 = z[1]
-        for i in 0..<frames {
-            let x = Double(samples[i])
-            let y = b0 * x + z1
-            z1 = b1 * x - a1 * y + z2
-            z2 = b2 * x - a2 * y
-            samples[i] = Float(y)
-        }
-        // Flush denormals and recover from any blow-up.
-        z[0] = z1.isFinite && abs(z1) > 1e-18 ? z1 : 0
-        z[1] = z2.isFinite && abs(z2) > 1e-18 ? z2 : 0
     }
 
     private static func applyGain(_ samples: UnsafeMutablePointer<Float>, frames: Int, from start: Float, to end: Float) {
