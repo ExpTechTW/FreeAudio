@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Puts the signing identity from the repository secrets into a keychain of its own on a GitHub runner, where
-# scripts/build-app.sh finds it.
+# Puts the signing identity from the repository secrets into a keychain of its own on a GitHub runner, and tells
+# scripts/build-app.sh which one it is (SIGN_IDENTITY, through $GITHUB_ENV).
 #
 # The signature is what an installed FreeAudio trusts: it only installs an update signed by its own team. Use the
-# certificate the local builds are signed with, too, because macOS keeps the System Audio Recording permission only
-# while the certificate stays the same.
+# team's Developer ID Application certificate, the one for apps given out outside the App Store. macOS then ties the
+# System Audio Recording permission to the team, so it stays through every update and certificate renewal. An Apple
+# Development certificate works as well, but ties the permission to that one developer's certificate.
 #
 # Repository secrets:
 #   APPLE_DEV_CERT_BASE64    the certificate and its private key, exported from Keychain Access (My Certificates) as a
@@ -35,6 +36,15 @@ security set-keychain-settings -lt 21600 "$keychain"
 security unlock-keychain -p "$keychain_password" "$keychain"
 security import "$p12" -k "$keychain" -P "$APPLE_DEV_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
 rm -f "$p12"
+# Apple's intermediate certificates for Developer ID, which the chain needs and a runner may not have. Both
+# generations: which one issued the certificate depends on when it was made.
+for ca in DeveloperIDCA DeveloperIDG2CA; do
+  if curl -fsSL --max-time 30 "https://www.apple.com/certificateauthority/$ca.cer" -o "$RUNNER_TEMP/$ca.cer"; then
+    security import "$RUNNER_TEMP/$ca.cer" -k "$keychain" >/dev/null 2>&1 || true
+  else
+    echo "::warning::couldn't download Apple's $ca intermediate certificate"
+  fi
+done
 # Lets codesign use the key without a prompt nobody is there to answer.
 security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" >/dev/null
 # First in the search list, so `security find-identity` in build-app.sh sees it.
@@ -44,12 +54,16 @@ security list-keychains -d user -s "$keychain" $existing
 
 identities="$(security find-identity -v -p codesigning "$keychain")"
 printf '%s\n' "$identities"
-if ! printf '%s\n' "$identities" | grep -q '"Apple Development: '; then
-  echo "::error::no valid Apple Development identity in APPLE_DEV_CERT_BASE64. Check the .p12 has the private key and hasn't expired, and that APPLE_DEV_CERT_PASSWORD matches it."
+identity="$(printf '%s\n' "$identities" | sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | head -n 1)"
+[ -n "$identity" ] || identity="$(printf '%s\n' "$identities" | sed -n 's/.*"\(Apple Development: .*\)"$/\1/p' | head -n 1)"
+if [ -z "$identity" ]; then
+  echo "::error::no valid Developer ID Application or Apple Development identity in APPLE_DEV_CERT_BASE64. Check the .p12 has the private key and hasn't expired, and that APPLE_DEV_CERT_PASSWORD matches it."
   exit 1
 fi
+echo "signing with: $identity"
+echo "SIGN_IDENTITY=$identity" >> "${GITHUB_ENV:-/dev/null}"
 
-certificate="$(security find-certificate -c 'Apple Development' -p "$keychain")"
+certificate="$(security find-certificate -c "$identity" -p "$keychain")"
 echo "signing certificate $(printf '%s\n' "$certificate" | openssl x509 -noout -enddate)"
 if ! printf '%s\n' "$certificate" | openssl x509 -noout -checkend $((30 * 86400)) >/dev/null; then
   echo "::warning::the signing certificate expires within 30 days. Renew it, then update APPLE_DEV_CERT_BASE64 and APPLE_DEV_CERT_PASSWORD."

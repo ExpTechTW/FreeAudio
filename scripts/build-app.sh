@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Builds, bundles and signs build/FreeAudio.app.
 #
-#   scripts/build-app.sh              release build, signed with your Apple Development certificate if you have one
+#   scripts/build-app.sh              release build, signed with your Developer ID or Apple Development certificate
 #   CONFIG=debug scripts/build-app.sh
 #   SIGN_IDENTITY=- scripts/build-app.sh   ad-hoc signature (macOS asks for audio permission again after every build,
 #                                          and the app can't check updates against its developer)
@@ -73,13 +73,17 @@ PLIST
 plutil -lint -s "$APP/Contents/Info.plist"
 
 # A stable certificate keeps the System Audio Recording permission across rebuilds, and lets the app check that an
-# update comes from the same developer.
-IDENTITY=${SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Apple Development/ { print $2; exit }')}
+# update comes from the same developer. Developer ID first: it's the one releases are signed with.
+IDENTITIES=$(security find-identity -v -p codesigning 2>/dev/null)
+IDENTITY=${SIGN_IDENTITY:-$(print -r -- "$IDENTITIES" | awk -F'"' '/"Developer ID Application: / { print $2; exit }')}
+IDENTITY=${IDENTITY:-$(print -r -- "$IDENTITIES" | awk -F'"' '/"Apple Development: / { print $2; exit }')}
 if [[ -z "$IDENTITY" ]]; then
     IDENTITY=-
-    echo "warning: no Apple Development certificate found; signing ad hoc" >&2
+    echo "warning: no Developer ID or Apple Development certificate found; signing ad hoc" >&2
 fi
-codesign --force --sign "$IDENTITY" --timestamp=none "$APP"
+# A Developer ID signature carries Apple's timestamp, so it stays valid after the certificate expires.
+[[ $IDENTITY == "Developer ID Application: "* ]] && TIMESTAMP=--timestamp || TIMESTAMP=--timestamp=none
+codesign --force --sign "$IDENTITY" "$TIMESTAMP" "$APP"
 codesign --verify --strict "$APP"
 echo "Built $APP ($LABEL, $TRAIN build $CODE, $CONFIG, ${ARCHS[*]}, signed with: $IDENTITY)"
 
