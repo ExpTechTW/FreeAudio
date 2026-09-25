@@ -24,6 +24,28 @@ FreeAudio は、メニューバーに常駐する macOS のオーディオツー
 
 macOS に組み込まれた Core Audio のプロセスタップで音を処理するので、仮想オーディオドライバをインストールする必要はありません。FreeAudio を通るのは設定を変えたアプリだけで、それ以外の音はこれまでどおりハードウェアへ直接届きます。
 
+## スクリーンショット
+
+画面は繁體中文表示のものです。
+
+<table>
+<tr>
+<td align="center"><img src="imgs/menu-bar.png" width="240" alt="メニューバーのパネル"><br>メニューバーのパネル：出力・入力・アプリごとの音量</td>
+<td align="center"><img src="imgs/settings-statistics.png" width="520" alt="統計"><br>統計：デバイスやアプリを使った時間</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td align="center"><img src="imgs/settings-hearing.png" width="390" alt="聴覚"><br>聴覚：耳に届く音量と今日の聴取量</td>
+<td align="center"><img src="imgs/settings-apps.png" width="390" alt="アプリ"><br>アプリ：アプリごとのサウンド設定</td>
+</tr>
+<tr>
+<td align="center"><img src="imgs/settings-general.png" width="390" alt="一般"><br>一般：起動・言語・権限</td>
+<td align="center"><img src="imgs/settings-devices.png" width="390" alt="デバイス"><br>デバイス：デバイスの切り替えと新しいデバイス</td>
+</tr>
+</table>
+
 ## できること
 
 | | |

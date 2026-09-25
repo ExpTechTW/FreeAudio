@@ -24,6 +24,28 @@ FreeAudio is a macOS audio tool that lives in the menu bar. Besides switching de
 
 It works through the Core Audio process taps built into macOS, so there's no virtual audio driver to install. Only the apps you adjust go through FreeAudio; everything else plays straight to the hardware as usual.
 
+## Screenshots
+
+The screenshots show the Traditional Chinese interface.
+
+<table>
+<tr>
+<td align="center"><img src="imgs/menu-bar.png" width="240" alt="Menu bar panel"><br>Menu bar panel: outputs, inputs and each app’s volume</td>
+<td align="center"><img src="imgs/settings-statistics.png" width="520" alt="Statistics"><br>Statistics: how long each device and app was used</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td align="center"><img src="imgs/settings-hearing.png" width="390" alt="Hearing"><br>Hearing: how loud it is at your ears, and today’s dose</td>
+<td align="center"><img src="imgs/settings-apps.png" width="390" alt="Apps"><br>Apps: each app’s sound settings</td>
+</tr>
+<tr>
+<td align="center"><img src="imgs/settings-general.png" width="390" alt="General"><br>General: startup, language and permission</td>
+<td align="center"><img src="imgs/settings-devices.png" width="390" alt="Devices"><br>Devices: switching devices, and new ones</td>
+</tr>
+</table>
+
 ## What it does
 
 | | |

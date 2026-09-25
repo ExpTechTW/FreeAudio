@@ -24,6 +24,26 @@ FreeAudio 是住在選單列的 macOS 音訊工具。除了切換裝置、調整
 
 它用 macOS 內建的 Core Audio process tap 處理聲音，不需要安裝虛擬音訊驅動。只有你調整過的 App 會經過 FreeAudio，其他聲音照常直接送到硬體。
 
+## 截圖
+
+<table>
+<tr>
+<td align="center"><img src="imgs/menu-bar.png" width="240" alt="選單列面板"><br>選單列面板：輸出、輸入與每個 App 的音量</td>
+<td align="center"><img src="imgs/settings-statistics.png" width="520" alt="統計"><br>統計：每個裝置與 App 用了多久</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td align="center"><img src="imgs/settings-hearing.png" width="390" alt="聽覺"><br>聽覺：傳到耳朵的音量與今日劑量</td>
+<td align="center"><img src="imgs/settings-apps.png" width="390" alt="App"><br>App：每個 App 的聲音設定</td>
+</tr>
+<tr>
+<td align="center"><img src="imgs/settings-general.png" width="390" alt="一般"><br>一般：啟動、語言與權限</td>
+<td align="center"><img src="imgs/settings-devices.png" width="390" alt="裝置"><br>裝置：切換裝置與新裝置</td>
+</tr>
+</table>
+
 ## 能做什麼
 
 | | |
