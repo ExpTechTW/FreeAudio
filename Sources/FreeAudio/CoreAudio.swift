@@ -105,7 +105,9 @@ final class PropertyListener {
     private var active: Bool
 
     init?(_ object: AudioObjectID, _ address: AudioObjectPropertyAddress, handler: @escaping @MainActor () -> Void) {
-        guard CA.has(object, address) else { return nil }
+        // An address with wildcards can't be asked about; it hears every property it matches.
+        let wildcard = address.mScope == kAudioObjectPropertyScopeWildcard || address.mElement == kAudioObjectPropertyElementWildcard
+        guard wildcard ? object != kAudioObjectUnknown : CA.has(object, address) else { return nil }
         self.object = object
         self.address = address
         block = { _, _ in MainActor.assumeIsolated { handler() } }

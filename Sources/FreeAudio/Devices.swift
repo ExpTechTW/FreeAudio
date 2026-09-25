@@ -19,6 +19,11 @@ struct AudioDevice: Identifiable, Hashable, Sendable {
     let uid: String
     let name: String
     let symbol: String
+    /// Its controls in the direction it was listed for, read once: they don't change while it's connected.
+    var hasVolume = false
+    var muteElements: [AudioObjectPropertyElement] = []
+
+    var canMute: Bool { !muteElements.isEmpty }
 }
 
 /// A device's volume and mute, as the panel shows them.
@@ -39,7 +44,14 @@ enum AudioDevices {
                   let rawName = CA.string(id, CA.address(kAudioObjectPropertyName)) else { return nil }
             let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines.union(.controlCharacters))
             let transport = CA.value(id, CA.address(kAudioDevicePropertyTransportType), fallback: UInt32(0))
-            return AudioDevice(id: id, uid: uid, name: name, symbol: symbol(transport: transport, name: name, direction: direction))
+            let mainMute = CA.address(kAudioDevicePropertyMute, scope: direction.scope)
+            // Mute on the main element, or per channel when the device has no main mute.
+            let muteElements: [AudioObjectPropertyElement] = CA.isSettable(id, mainMute) ? [kAudioObjectPropertyElementMain]
+                : [1, 2].filter { CA.isSettable(id, CA.address(kAudioDevicePropertyMute, scope: direction.scope, element: $0)) }
+            return AudioDevice(
+                id: id, uid: uid, name: name, symbol: symbol(transport: transport, name: name, direction: direction),
+                hasVolume: CA.isSettable(id, volumeAddress(direction)), muteElements: muteElements
+            )
         }
         .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
@@ -75,38 +87,26 @@ enum AudioDevices {
 
     // MARK: Volume
 
-    static func volume(_ id: AudioDeviceID, _ direction: DeviceDirection) -> Double? {
-        CA.optionalValue(id, volumeAddress(direction), as: Float32.self, zero: 0).map(Double.init)
+    static func volume(_ device: AudioDevice, _ direction: DeviceDirection) -> Double? {
+        CA.optionalValue(device.id, volumeAddress(direction), as: Float32.self, zero: 0).map(Double.init)
     }
 
-    static func canSetVolume(_ id: AudioDeviceID, _ direction: DeviceDirection) -> Bool {
-        CA.isSettable(id, volumeAddress(direction))
-    }
-
-    static func setVolume(_ volume: Double, _ id: AudioDeviceID, _ direction: DeviceDirection) {
-        CA.set(id, volumeAddress(direction), value: Float32(volume.clamped(to: 0...1)))
+    static func setVolume(_ volume: Double, _ device: AudioDevice, _ direction: DeviceDirection) {
+        CA.set(device.id, volumeAddress(direction), value: Float32(volume.clamped(to: 0...1)))
     }
 
     // MARK: Mute
 
-    /// Mute controls on the main element, or per channel when the device has no main mute.
-    private static func muteAddresses(_ id: AudioDeviceID, _ direction: DeviceDirection) -> [AudioObjectPropertyAddress] {
-        let main = CA.address(kAudioDevicePropertyMute, scope: direction.scope)
-        if CA.isSettable(id, main) { return [main] }
-        return [1, 2].map { CA.address(kAudioDevicePropertyMute, scope: direction.scope, element: $0) }.filter { CA.isSettable(id, $0) }
+    static func isMuted(_ device: AudioDevice, _ direction: DeviceDirection) -> Bool {
+        device.canMute && device.muteElements.allSatisfy {
+            CA.value(device.id, CA.address(kAudioDevicePropertyMute, scope: direction.scope, element: $0), fallback: UInt32(0)) != 0
+        }
     }
 
-    static func canMute(_ id: AudioDeviceID, _ direction: DeviceDirection) -> Bool {
-        !muteAddresses(id, direction).isEmpty
-    }
-
-    static func isMuted(_ id: AudioDeviceID, _ direction: DeviceDirection) -> Bool {
-        let addresses = muteAddresses(id, direction)
-        return !addresses.isEmpty && addresses.allSatisfy { CA.value(id, $0, fallback: UInt32(0)) != 0 }
-    }
-
-    static func setMuted(_ muted: Bool, _ id: AudioDeviceID, _ direction: DeviceDirection) {
-        for address in muteAddresses(id, direction) { CA.set(id, address, value: UInt32(muted ? 1 : 0)) }
+    static func setMuted(_ muted: Bool, _ device: AudioDevice, _ direction: DeviceDirection) {
+        for element in device.muteElements {
+            CA.set(device.id, CA.address(kAudioDevicePropertyMute, scope: direction.scope, element: element), value: UInt32(muted ? 1 : 0))
+        }
     }
 
     /// Properties whose changes mean the volume or mute state should be re-read.

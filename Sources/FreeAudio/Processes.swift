@@ -12,6 +12,8 @@ struct AudioApp: Identifiable, Equatable {
     var isPlaying: Bool
 }
 
+/// Keeps track of the processes doing audio, from Core Audio's notifications rather than by asking: every question
+/// is a round trip into coreaudiod, and asking about each process every second kept it measurably busy.
 @MainActor
 final class ProcessMonitor {
     struct Snapshot {
@@ -25,6 +27,9 @@ final class ProcessMonitor {
         var conflictingApps: [String] = []
         /// Whether any other process is currently producing output.
         var anyPlaying = false
+        /// The devices each process plays to and records from right now; FreeAudio's own included.
+        var playing: [AudioObjectID: [AudioObjectID]] = [:]
+        var recording: [AudioObjectID: [AudioObjectID]] = [:]
     }
 
     private struct Identity {
@@ -34,42 +39,113 @@ final class ProcessMonitor {
         let isAccessory: Bool
     }
 
-    private var identities: [AudioObjectID: Identity?] = [:]
+    private struct Entry {
+        let pid: pid_t
+        let identity: Identity?
+        var listener: PropertyListener?
+        var playing = false
+        var recording = false
+        var outputs: [AudioObjectID] = []
+        var inputs: [AudioObjectID] = []
+    }
+
+    private(set) var snapshot = Snapshot()
+    private var entries: [AudioObjectID: Entry] = [:]
     private var reRouters: Set<AudioObjectID> = []
+    private var listListener: PropertyListener?
+    private var publishScheduled = false
     private let ownPID = getpid()
     private let ownBundleID = Bundle.main.bundleIdentifier
+    private let onChange: @MainActor () -> Void
 
-    func scan() -> Snapshot {
+    init(onChange: @escaping @MainActor () -> Void) {
+        self.onChange = onChange
+    }
+
+    func start() {
+        listListener = PropertyListener(CA.system, CA.address(kAudioHardwarePropertyProcessObjectList)) { [weak self] in
+            self?.updateList()
+        }
+        updateList()
+        publish()
+    }
+
+    /// Reads everything again, in case a notification went missing (e.g. across sleep).
+    func reload() {
+        entries.removeAll()
+        reRouters.removeAll()
+        updateList()
+        publish()
+    }
+
+    private func updateList() {
         let objects = CA.array(CA.system, CA.address(kAudioHardwarePropertyProcessObjectList), as: AudioObjectID.self)
         let live = Set(objects)
-        identities = identities.filter { live.contains($0.key) }
+        entries = entries.filter { live.contains($0.key) }
         reRouters.formIntersection(live)
-        let publicDevices = Set(CA.array(CA.system, CA.address(kAudioHardwarePropertyDevices), as: AudioObjectID.self))
+        for object in objects where entries[object] == nil {
+            let pid = CA.value(object, CA.address(kAudioProcessPropertyPID), fallback: pid_t(-1))
+            var entry = Entry(pid: pid, identity: pid == ownPID ? nil : Self.resolve(pid: pid))
+            // Starting or stopping output or input, or moving to another device, changes these.
+            let any = CA.address(kAudioObjectPropertySelectorWildcard, scope: kAudioObjectPropertyScopeWildcard, element: kAudioObjectPropertyElementWildcard)
+            entry.listener = PropertyListener(object, any) { [weak self] in self?.update(object) }
+            entries[object] = entry
+            read(object)
+        }
+        schedulePublish()
+    }
 
+    private func update(_ object: AudioObjectID) {
+        read(object)
+        schedulePublish()
+    }
+
+    private func read(_ object: AudioObjectID) {
+        guard var entry = entries[object] else { return }
+        entry.playing = CA.value(object, CA.address(kAudioProcessPropertyIsRunningOutput), fallback: UInt32(0)) != 0
+        entry.recording = CA.value(object, CA.address(kAudioProcessPropertyIsRunningInput), fallback: UInt32(0)) != 0
+        entry.outputs = entry.playing ? CA.array(object, CA.address(kAudioProcessPropertyDevices, scope: kAudioObjectPropertyScopeOutput), as: AudioObjectID.self) : []
+        entry.inputs = entry.recording ? CA.array(object, CA.address(kAudioProcessPropertyDevices, scope: kAudioObjectPropertyScopeInput), as: AudioObjectID.self) : []
+        // Tap-based audio tools read their input from private aggregate devices, which don't show up in the public
+        // device list; one doing that while it plays is taken for one from then on.
+        if entry.pid != ownPID, entry.playing, entry.recording, !reRouters.contains(object) {
+            let publicDevices = Set(CA.array(CA.system, CA.address(kAudioHardwarePropertyDevices), as: AudioObjectID.self))
+            if entry.inputs.allSatisfy({ !publicDevices.contains($0) }) { reRouters.insert(object) }
+        }
+        entries[object] = entry
+    }
+
+    /// One snapshot for a burst of notifications.
+    private func schedulePublish() {
+        guard !publishScheduled else { return }
+        publishScheduled = true
+        Task { @MainActor [weak self] in
+            self?.publishScheduled = false
+            self?.publish()
+        }
+    }
+
+    private func publish() {
         var snapshot = Snapshot()
         var grouped: [String: AudioApp] = [:]
         var routerApps: [String: String] = [:]
-        for object in objects {
-            let pid = CA.value(object, CA.address(kAudioProcessPropertyPID), fallback: pid_t(-1))
-            if pid == ownPID {
+        for (object, entry) in entries.sorted(by: { $0.key < $1.key }) {
+            if entry.playing { snapshot.playing[object] = entry.outputs }
+            if entry.recording { snapshot.recording[object] = entry.inputs }
+            if entry.pid == ownPID {
                 snapshot.ownProcesses.append(object)
                 continue
             }
-            let playing = CA.value(object, CA.address(kAudioProcessPropertyIsRunningOutput), fallback: UInt32(0)) != 0
-            if playing { snapshot.anyPlaying = true }
-            if playing, !reRouters.contains(object), Self.looksLikeReRouter(object, publicDevices: publicDevices) {
-                reRouters.insert(object)
-            }
-            let identity = identity(for: object, pid: pid)
+            if entry.playing { snapshot.anyPlaying = true }
             if reRouters.contains(object) {
                 snapshot.reRouters.append(object)
                 // A menu bar app doing this is another audio tool, not a call or a DAW.
-                if let identity, identity.isAccessory { routerApps[identity.key] = identity.name }
+                if let identity = entry.identity, identity.isAccessory { routerApps[identity.key] = identity.name }
             }
-            guard let identity, identity.key != ownBundleID else { continue }
+            guard let identity = entry.identity, identity.key != ownBundleID else { continue }
             grouped[identity.key, default: AudioApp(id: identity.key, name: identity.name, icon: identity.icon, processes: [], isPlaying: false)]
                 .processes.append(object)
-            if playing { grouped[identity.key]?.isPlaying = true }
+            if entry.playing { grouped[identity.key]?.isPlaying = true }
         }
         if snapshot.ownProcesses.isEmpty, let own = CA.processObject(pid: ownPID) {
             snapshot.ownProcesses.append(own)
@@ -77,25 +153,11 @@ final class ProcessMonitor {
         for key in routerApps.keys {
             snapshot.reRouters += grouped.removeValue(forKey: key)?.processes ?? []
         }
-        snapshot.reRouters = Array(Set(snapshot.reRouters))
+        snapshot.reRouters = Array(Set(snapshot.reRouters)).sorted()
         snapshot.conflictingApps = routerApps.values.sorted()
         snapshot.apps = grouped.values.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-        return snapshot
-    }
-
-    /// Tap-based audio tools read their input from private aggregate devices,
-    /// which don't show up in the public device list.
-    private static func looksLikeReRouter(_ object: AudioObjectID, publicDevices: Set<AudioObjectID>) -> Bool {
-        guard CA.value(object, CA.address(kAudioProcessPropertyIsRunningInput), fallback: UInt32(0)) != 0 else { return false }
-        let inputs = CA.array(object, CA.address(kAudioProcessPropertyDevices, scope: kAudioObjectPropertyScopeInput), as: AudioObjectID.self)
-        return inputs.allSatisfy { !publicDevices.contains($0) }
-    }
-
-    private func identity(for object: AudioObjectID, pid: pid_t) -> Identity? {
-        if let cached = identities[object] { return cached }
-        let identity = Self.resolve(pid: pid)
-        identities[object] = .some(identity)
-        return identity
+        self.snapshot = snapshot
+        onChange()
     }
 
     private static func resolve(pid: pid_t) -> Identity? {
