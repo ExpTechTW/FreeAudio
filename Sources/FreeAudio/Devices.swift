@@ -21,6 +21,14 @@ struct AudioDevice: Identifiable, Hashable, Sendable {
     let symbol: String
 }
 
+/// A device's volume and mute, as the panel shows them.
+struct DeviceLevelState: Equatable, Sendable {
+    var volume: Double
+    var muted: Bool
+    /// Whether the slider can change it: the device has a volume control, or FreeAudio sets the level itself.
+    var adjustable: Bool
+}
+
 enum AudioDevices {
     static func list(_ direction: DeviceDirection) -> [AudioDevice] {
         CA.array(CA.system, CA.address(kAudioHardwarePropertyDevices), as: AudioDeviceID.self).compactMap { id in

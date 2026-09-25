@@ -363,6 +363,16 @@ private func renderer(
         #expect(decoded == state)
     }
 
+    @Test func deviceSettingsSavedBeforeLevelsKeepFullVolume() throws {
+        let old = try JSONDecoder().decode(DeviceAudioSettings.self, from: Data(#"{"balance":0.2}"#.utf8))
+        #expect(old.volume == 1 && !old.muted && old.gain == 1)
+        var settings = DeviceAudioSettings()
+        settings.volume = 0.4
+        #expect(settings.gain == 0.4 && settings.needsProcessing && !settings.isDefault)
+        settings.muted = true
+        #expect(settings.gain == 0)
+    }
+
     @Test func routingNeedsFollowTheSettings() {
         var settings = AppAudioSettings()
         #expect(settings.isDefault && !settings.needsProcessing && !settings.isSilenced)

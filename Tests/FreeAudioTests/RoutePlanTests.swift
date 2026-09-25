@@ -103,6 +103,18 @@ import Testing
         #expect(Set(seen.keys) == [headphones])
     }
 
+    @Test func aLevelFreeAudioSetsKeepsTheDeviceMutedFromTheStart() {
+        var state = PersistedState()
+        var settings = DeviceAudioSettings()
+        settings.volume = 0.5
+        state.devices[tv] = settings
+        let routes = plan(state, defaultUID: tv)
+        #expect(routes[RouteKey(source: .system, deviceUID: tv, tapDeviceUID: tv)]?.mute == .muted)
+        // Back at 100%: nothing to do.
+        state.devices[tv] = nil
+        #expect(plan(state, defaultUID: tv).isEmpty)
+    }
+
     @Test func aStandInGetsNothing() {
         #expect(plan(mirroring(to: [tv]), silenced: [tv]).isEmpty)
     }

@@ -131,8 +131,13 @@ struct AppAudioSettings: Codable, Equatable, Sendable {
 struct DeviceAudioSettings: Codable, Equatable, Sendable {
     var balance = 0.0
     var eq = EQSettings()
+    /// The level FreeAudio gives what it renders on a device without a volume control (e.g. HDMI), and its mute
+    /// when the device has no mute control either. Devices with their own controls keep 100% and unmuted here.
+    var volume = 1.0
+    var muted = false
 
-    var needsProcessing: Bool { balance != 0 || eq.isActive }
+    var gain: Double { muted ? 0 : volume }
+    var needsProcessing: Bool { balance != 0 || eq.isActive || gain != 1 }
     var isDefault: Bool { self == DeviceAudioSettings() }
 
     init() {}
@@ -141,6 +146,8 @@ struct DeviceAudioSettings: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         balance = try container.decodeIfPresent(Double.self, forKey: .balance) ?? 0
         eq = try container.decodeIfPresent(EQSettings.self, forKey: .eq) ?? EQSettings()
+        volume = try container.decodeIfPresent(Double.self, forKey: .volume) ?? 1
+        muted = try container.decodeIfPresent(Bool.self, forKey: .muted) ?? false
     }
 }
 

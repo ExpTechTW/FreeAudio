@@ -139,9 +139,8 @@ private struct SelectedDeviceRow: View {
 
     var body: some View {
         let output = direction == .output
-        let volume = output ? audio.outputVolume : audio.inputVolume
-        let muted = output ? audio.outputMuted : audio.inputMuted
-        let hasVolume = output ? audio.outputHasVolume : audio.inputHasVolume
+        let level = audio.level(of: device, direction)
+        let volume = level.volume, muted = level.muted, hasVolume = level.adjustable
 
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
@@ -160,11 +159,11 @@ private struct SelectedDeviceRow: View {
                     help: muted ? L("action.unmute") : L("action.mute"),
                     label: LF(muted ? "a11y.unmute" : "a11y.mute", device.name)
                 ) {
-                    audio.toggleMute(direction)
+                    audio.toggleMute(device, direction)
                 }
                 .disabled(audio.isDisabled(direction))
             }
-            Slider(value: Binding(get: { volume }, set: { audio.setVolume($0, direction) }), in: 0...1) {
+            Slider(value: Binding(get: { volume }, set: { audio.setVolume($0, for: device, direction) }), in: 0...1) {
                 Text(L(output ? "section.output" : "section.input"))
             }
             .labelsHidden()

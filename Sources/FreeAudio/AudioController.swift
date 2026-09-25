@@ -8,12 +8,8 @@ final class AudioController: ObservableObject {
     @Published private(set) var inputDevices: [AudioDevice] = []
     @Published private(set) var outputDeviceID = AudioDeviceID(kAudioObjectUnknown)
     @Published private(set) var inputDeviceID = AudioDeviceID(kAudioObjectUnknown)
-    @Published private(set) var outputVolume = 0.0
-    @Published private(set) var inputVolume = 0.0
-    @Published private(set) var outputMuted = false
-    @Published private(set) var inputMuted = false
-    @Published private(set) var outputHasVolume = false
-    @Published private(set) var inputHasVolume = false
+    /// Volume and mute of the default input and output, keyed like `PersistedState.deviceLevels`.
+    @Published private(set) var levels: [String: DeviceLevelState] = [:]
 
     /// Running apps that played recently or have saved settings.
     @Published private(set) var apps: [AudioApp] = []
@@ -68,7 +64,7 @@ final class AudioController: ObservableObject {
     private var deviceControls: [String: StageControl] = [:]
     private var systemListeners: [PropertyListener] = []
     private var volumeListeners: [PropertyListener] = []
-    private var observedVolumeDevices: [AudioDeviceID] = []
+    private var observedVolumeDevices: [String] = []
     private var sampleRateListeners: [String: PropertyListener] = [:]
     private var sampleRates: [String: Float64] = [:]
     private var softMuteVolumes: [String: Double] = [:]
@@ -82,7 +78,8 @@ final class AudioController: ObservableObject {
     private var holdRetry: Task<Void, Never>?
     /// Bluetooth devices can take a while to connect after login.
     private static let restoreWindow: TimeInterval = 120
-    private var lastVolumeWrite: [DeviceDirection: Date] = [:]
+    /// When the panel last set each level, keyed like `levels`.
+    private var lastVolumeWrite: [String: Date] = [:]
     private var observers: [NSObjectProtocol] = []
     private var timer: Timer?
     private var saveTask: Task<Void, Never>?
@@ -142,7 +139,7 @@ final class AudioController: ObservableObject {
     /// For the menu bar icon: no usable microphone (none at all, or the chosen one is missing), muted, or on.
     var microphoneState: MicrophoneState {
         if inputDevices.isEmpty || missingDevices[.input] != nil { return .unavailable }
-        return inputMuted ? .muted : .on
+        return defaultInput.map { level(of: $0, .input).muted } == true ? .muted : .on
     }
 
     func isDisabled(_ direction: DeviceDirection) -> Bool { missingDevices[direction] != nil }
@@ -190,32 +187,43 @@ final class AudioController: ObservableObject {
         select(current, direction)
     }
 
-    func setVolume(_ volume: Double, _ direction: DeviceDirection) {
-        guard let device = direction == .output ? defaultOutput : defaultInput else { return }
+    func level(of device: AudioDevice, _ direction: DeviceDirection) -> DeviceLevelState {
+        levels[levelKey(device, direction)] ?? DeviceLevelState(volume: 0, muted: false, adjustable: false)
+    }
+
+    func setVolume(_ volume: Double, for device: AudioDevice, _ direction: DeviceDirection) {
+        let key = levelKey(device, direction)
         let volume = volume.clamped(to: 0...1)
+        let shown = level(of: device, direction)
         // A slider can report its current value again, e.g. when it appears; that isn't a change.
-        guard abs(volume - (direction == .output ? outputVolume : inputVolume)) > 0.0005 else { return }
-        if direction == .output { outputVolume = volume } else { inputVolume = volume }
-        lastVolumeWrite[direction] = Date()
-        AudioDevices.setVolume(volume, device.id, direction)
+        guard abs(volume - shown.volume) > 0.0005 else { return }
+        levels[key]?.volume = volume
+        lastVolumeWrite[key] = Date()
+        if usesSoftwareLevel(device, direction) {
+            updateDeviceSettings(for: device) { $0.volume = volume }
+        } else {
+            AudioDevices.setVolume(volume, device.id, direction)
+        }
         // Like the system controls, moving the slider un-mutes, at the level it was moved to.
-        if volume > 0, direction == .output ? outputMuted : inputMuted {
+        if volume > 0, shown.muted {
             softMuteVolumes[device.uid] = nil
             if direction == .input { state.parkedMicrophones[device.uid] = nil }
-            setMuted(false, direction)
+            setMuted(false, device, direction)
         }
     }
 
-    func toggleMute(_ direction: DeviceDirection) {
-        setMuted(!(direction == .output ? outputMuted : inputMuted), direction)
+    func toggleMute(_ device: AudioDevice, _ direction: DeviceDirection) {
+        setMuted(!level(of: device, direction).muted, device, direction)
     }
 
-    private func setMuted(_ muted: Bool, _ direction: DeviceDirection) {
-        guard let device = direction == .output ? defaultOutput : defaultInput else { return }
+    private func setMuted(_ muted: Bool, _ device: AudioDevice, _ direction: DeviceDirection) {
         if direction == .input {
             setMicrophoneMuted(muted, device)
         } else if AudioDevices.canMute(device.id, direction) {
             AudioDevices.setMuted(muted, device.id, direction)
+        } else if usesSoftwareLevel(device, direction) {
+            // No volume or mute control (e.g. HDMI): FreeAudio silences what it renders there.
+            updateDeviceSettings(for: device) { $0.muted = muted }
         } else if muted {
             // Devices without a mute control are muted by parking the volume at zero.
             softMuteVolumes[device.uid] = AudioDevices.volume(device.id, direction) ?? 1
@@ -224,6 +232,11 @@ final class AudioController: ObservableObject {
             AudioDevices.setVolume(volume, device.id, direction)
         }
         refreshVolumes()
+    }
+
+    /// An output without a volume control gets its level from FreeAudio, applied to what FreeAudio renders on it.
+    private func usesSoftwareLevel(_ device: AudioDevice, _ direction: DeviceDirection) -> Bool {
+        direction == .output && !AudioDevices.canSetVolume(device.id, .output)
     }
 
     func refreshDevices() {
@@ -695,34 +708,42 @@ final class AudioController: ObservableObject {
 
     private func levelKey(_ device: AudioDevice, _ direction: DeviceDirection) -> String { "\(direction.key):\(device.uid)" }
 
+    /// The devices whose level the panel shows: the default input and output.
+    private var watchedDevices: [(device: AudioDevice, direction: DeviceDirection)] {
+        var devices: [(device: AudioDevice, direction: DeviceDirection)] = []
+        if let defaultInput { devices.append((defaultInput, .input)) }
+        if let defaultOutput { devices.append((defaultOutput, .output)) }
+        return devices
+    }
+
     private func refreshVolumes() {
-        let now = Date()
         for direction in [DeviceDirection.output, .input] {
-            let device = direction == .output ? defaultOutput : defaultInput
-            let hasVolume = device.map { AudioDevices.canSetVolume($0.id, direction) } ?? false
-            let volume = device.flatMap { AudioDevices.volume($0.id, direction) } ?? (device == nil ? 0 : 1)
-            if engineEnabled, state.locksDevices, missingDevices[direction] != nil, let device {
+            // Whatever macOS picked in place of a missing device stays silent.
+            if engineEnabled, state.locksDevices, missingDevices[direction] != nil,
+               let device = direction == .output ? defaultOutput : defaultInput {
                 silence(device, direction)
             }
-            let muted = device.map { muteState($0, direction) } ?? false
+        }
+        let now = Date()
+        var next: [String: DeviceLevelState] = [:]
+        for (device, direction) in watchedDevices {
+            let key = levelKey(device, direction)
+            let hasVolume = AudioDevices.canSetVolume(device.id, direction)
+            let software = usesSoftwareLevel(device, direction)
+            let volume = software ? deviceSettings(for: device.uid).volume : AudioDevices.volume(device.id, direction) ?? 1
+            let muted = muteState(device, direction)
             // A stand-in's silence is FreeAudio's doing, not a level to remember.
-            let standIn = device.map { state.silencedLevels[levelKey($0, direction)] != nil } ?? false
-            if !standIn, hasVolume || device.map({ AudioDevices.canMute($0.id, direction) }) == true {
+            if state.silencedLevels[key] == nil, hasVolume || AudioDevices.canMute(device.id, direction) {
                 rememberLevel(device, direction, volume: volume, muted: muted)
             }
+            var level = DeviceLevelState(volume: volume, muted: muted, adjustable: hasVolume || software)
             // Ignore read-backs while the user is dragging, so the slider doesn't jitter.
-            let settling = now.timeIntervalSince(lastVolumeWrite[direction] ?? .distantPast) < 0.4
-            switch direction {
-            case .output:
-                if outputHasVolume != hasVolume { outputHasVolume = hasVolume }
-                if !settling, outputVolume != volume { outputVolume = volume }
-                if outputMuted != muted { outputMuted = muted }
-            case .input:
-                if inputHasVolume != hasVolume { inputHasVolume = hasVolume }
-                if !settling, inputVolume != volume { inputVolume = volume }
-                if inputMuted != muted { inputMuted = muted }
+            if now.timeIntervalSince(lastVolumeWrite[key] ?? .distantPast) < 0.4, let shown = levels[key] {
+                level.volume = shown.volume
             }
+            next[key] = level
         }
+        if next != levels { levels = next }
     }
 
     private func muteState(_ device: AudioDevice, _ direction: DeviceDirection) -> Bool {
@@ -732,6 +753,7 @@ final class AudioController: ObservableObject {
             return isHeld(device) && state.parkedMicrophones[device.uid] != nil && (AudioDevices.volume(device.id, .input) ?? 1) == 0
         }
         if AudioDevices.canMute(device.id, direction) { return AudioDevices.isMuted(device.id, direction) }
+        if usesSoftwareLevel(device, direction) { return deviceSettings(for: device.uid).muted }
         if softMuteVolumes[device.uid] != nil, (AudioDevices.volume(device.id, direction) ?? 0) > 0 {
             softMuteVolumes[device.uid] = nil
         }
@@ -755,13 +777,12 @@ final class AudioController: ObservableObject {
     }
 
     private func installVolumeListeners() {
-        let devices = [(defaultOutput, DeviceDirection.output), (defaultInput, .input)]
-        let ids = devices.map { $0.0?.id ?? AudioDeviceID(kAudioObjectUnknown) }
-        guard ids != observedVolumeDevices else { return }
-        observedVolumeDevices = ids
-        volumeListeners = devices.flatMap { device, direction -> [PropertyListener] in
-            guard let device else { return [] }
-            return AudioDevices.observedAddresses(direction).compactMap {
+        let watched = watchedDevices
+        let keys = watched.map { "\(levelKey($0.device, $0.direction))#\($0.device.id)" }
+        guard keys != observedVolumeDevices else { return }
+        observedVolumeDevices = keys
+        volumeListeners = watched.flatMap { device, direction -> [PropertyListener] in
+            AudioDevices.observedAddresses(direction).compactMap {
                 PropertyListener(device.id, $0) { [weak self] in
                     // A held microphone is muted again first, so the panel never shows it open.
                     if direction == .input { self?.holdMicrophoneMutes() }
@@ -868,6 +889,8 @@ final class AudioController: ObservableObject {
         state.devices[uid] = settings.isDefault ? nil : settings
         if let name { state.deviceNames[uid] = name }
         configureDeviceControl(uid)
+        // A device without a volume control shows the level kept here.
+        refreshVolumes()
         reconcileRoutes()
         scheduleSave()
     }
@@ -1107,7 +1130,7 @@ final class AudioController: ObservableObject {
         guard let control = deviceControls[uid] else { return }
         let settings = deviceSettings(for: uid)
         let balance = settings.balance.balanceGains
-        control.update(gainLeft: balance.left, gainRight: balance.right, eq: settings.eq)
+        control.update(gainLeft: settings.gain * balance.left, gainRight: settings.gain * balance.right, eq: settings.eq)
     }
 
     /// Routes are built for the device's sample rate, so they're rebuilt when it changes.
