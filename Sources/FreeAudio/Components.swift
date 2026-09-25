@@ -176,7 +176,7 @@ extension Text {
     }
 }
 
-/// Output device with a checkmark, for choosing extra outputs.
+/// Output device with a round checkbox, for choosing extra outputs.
 struct DeviceCheckRow: View {
     let device: AudioDevice
     let checked: Bool
@@ -188,11 +188,39 @@ struct DeviceCheckRow: View {
                 DeviceIcon(symbol: device.symbol, selected: checked)
                 Text(device.name).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 4)
-                if checked {
-                    Image(systemName: "checkmark").foregroundStyle(.tint)
-                }
+                CheckMark(checked: checked)
             }
         }
+        .accessibilityAddTraits(checked ? .isSelected : [])
+    }
+}
+
+/// The round checkbox of an output that can play along with others, as in the AirPlay list.
+struct CheckMark: View {
+    let checked: Bool
+
+    var body: some View {
+        Image(systemName: checked ? "checkmark.circle.fill" : "circle")
+            .font(.body)
+            .foregroundStyle(checked ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+            .frame(width: 22, height: 22)
+            .accessibilityHidden(true)
+    }
+}
+
+/// A checkbox button for an output that plays while multi-output is on.
+struct CheckButton: View {
+    let checked: Bool
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            CheckMark(checked: checked).contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help(label)
+        .accessibilityLabel(label)
         .accessibilityAddTraits(checked ? .isSelected : [])
     }
 }

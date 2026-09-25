@@ -67,11 +67,13 @@ enum RoutePlan {
         }
 
         let excluded = Set(own + takenOver)
-        let settings = state.devices[defaultUID] ?? DeviceAudioSettings()
-        if settings.needsProcessing {
+        // Every output playing applies its own balance, equalizer and, without a volume control, FreeAudio's level.
+        for uid in [defaultUID] + globalExtras {
+            let settings = state.devices[uid] ?? DeviceAudioSettings()
+            guard settings.needsProcessing else { continue }
             // A level FreeAudio sets keeps the device's audio muted from the start, as app routes do, so nothing
             // plays at full volume before the route runs. An equalizer alone lets it through until then.
-            add(.system, to: defaultUID, tapping: Array(excluded), on: defaultUID, mute: settings.gain != 1 ? .muted : .mutedWhenTapped)
+            add(.system, to: uid, tapping: Array(excluded), on: uid, mute: settings.gain != 1 ? .muted : .mutedWhenTapped)
         }
         let mirrorExcluded = Array(excluded.union(unmirrored))
         for uid in globalExtras {

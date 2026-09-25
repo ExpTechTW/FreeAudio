@@ -164,3 +164,9 @@
 "update.error.untrusted" = "ダウンロードしたファイルは FreeAudio の開発者が署名したものではないため、インストールしませんでした。";
 "update.error.unsigned" = "この FreeAudio は署名されていないため、アップデートを検証できません。GitHub から新しいバージョンをダウンロードしてください。";
 "update.error.not_writable" = "FreeAudio は現在の場所では自分自身を置き換えられません。「アプリケーション」フォルダに移動してから、もう一度お試しください。";
+
+"multi.hint" = "上の「出力」で、同時に再生するデバイスにチェックを付けてください。";
+"multi.add_device" = "「%@」でも再生";
+"multi.remove_device" = "「%@」での再生を停止";
+"a11y.volume" = "「%@」の音量";
+"a11y.device_processing" = "「%@」のバランスとイコライザ";

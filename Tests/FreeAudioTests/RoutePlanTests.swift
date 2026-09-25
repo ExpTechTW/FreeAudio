@@ -103,6 +103,19 @@ import Testing
         #expect(Set(seen.keys) == [headphones])
     }
 
+    @Test func everyOutputPlayingAppliesItsOwnEqualizer() {
+        var state = mirroring(to: [tv])
+        var settings = DeviceAudioSettings()
+        settings.eq.apply(.rock)
+        state.devices[tv] = settings
+        let routes = plan(state)
+        // What reaches the TV from the default device is a copy, rendered with the TV's settings; what plays on
+        // the TV itself is processed there.
+        #expect(routes[RouteKey(source: .system, deviceUID: tv, tapDeviceUID: speakers)]?.mute == .unmuted)
+        #expect(routes[RouteKey(source: .system, deviceUID: tv, tapDeviceUID: tv)]?.mute == .mutedWhenTapped)
+        #expect(routes[RouteKey(source: .system, deviceUID: speakers, tapDeviceUID: speakers)] == nil)
+    }
+
     @Test func aLevelFreeAudioSetsKeepsTheDeviceMutedFromTheStart() {
         var state = PersistedState()
         var settings = DeviceAudioSettings()

@@ -7,7 +7,6 @@ struct TrayView: View {
     @AppStorage("tray.inputExpanded") private var inputExpanded = true
     @AppStorage("tray.outputExpanded") private var outputExpanded = true
     @AppStorage("tray.appsExpanded") private var appsExpanded = true
-    @AppStorage("tray.outputDetail") private var showsOutputDetail = false
     @AppStorage("tray.expandedApp") private var expandedApp = ""
     /// Last measured content height; remembered so the panel opens at the right size.
     @AppStorage("tray.contentHeight") private var contentHeight = 420.0
@@ -31,8 +30,8 @@ struct TrayView: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 6) {
-            DeviceSection(direction: .input, expanded: $inputExpanded, showsDetail: .constant(false))
-            DeviceSection(direction: .output, expanded: $outputExpanded, showsDetail: $showsOutputDetail)
+            DeviceSection(direction: .input, expanded: $inputExpanded)
+            DeviceSection(direction: .output, expanded: $outputExpanded)
             Divider().padding(.vertical, 4)
             MultiOutputSection()
             AppsSection(expanded: $appsExpanded, expandedApp: $expandedApp)
@@ -86,12 +85,16 @@ private struct DeviceSection: View {
     @EnvironmentObject private var audio: AudioController
     let direction: DeviceDirection
     @Binding var expanded: Bool
-    @Binding var showsDetail: Bool
+    /// The output whose balance and equalizer are showing, by UID.
+    @AppStorage("tray.detailDevice") private var detailDevice = ""
 
     var body: some View {
         let devices = direction == .input ? audio.inputDevices : audio.outputDevices
         let selected = direction == .input ? audio.defaultInput : audio.defaultOutput
-        let others = devices.filter { $0.id != selected?.id }
+        // With multi-output on, every output playing is selected, each with its own level, like AirPlay speakers.
+        let multi = direction == .output && audio.state.globalMultiOutput
+        let playing = [selected].compactMap { $0 } + (direction == .output ? audio.extraOutputs : [])
+        let others = devices.filter { !playing.contains($0) }
         VStack(alignment: .leading, spacing: 4) {
             SectionHeader(
                 title: L(direction == .input ? "section.input" : "section.output"),
@@ -103,44 +106,66 @@ private struct DeviceSection: View {
             } else if let blocked = audio.blockedDevices[direction], let selected {
                 BlockedSwitchNotice(direction: direction, blocked: blocked, chosen: selected)
             }
-            if let selected {
-                SelectedDeviceRow(device: selected, direction: direction, showsDetail: $showsDetail)
-                if direction == .output, showsDetail {
-                    DeviceProcessingPanel(device: selected)
-                        .transition(.opacity)
-                }
-            } else {
+            if playing.isEmpty {
                 Text(L(direction == .input ? "device.input_not_found" : "device.output_not_found"))
                     .foregroundStyle(.secondary)
+            }
+            ForEach(playing) { device in
+                SelectedDeviceRow(
+                    device: device,
+                    direction: direction,
+                    isDefault: device == selected,
+                    showsDetail: Binding(get: { detailDevice == device.uid }, set: { detailDevice = $0 ? device.uid : "" }),
+                    // The last output playing can't be unchecked.
+                    check: multi ? OutputCheck(enabled: playing.count > 1) { audio.toggleOutput(device) } : nil
+                )
+                if direction == .output, detailDevice == device.uid {
+                    DeviceProcessingPanel(device: device)
+                        .transition(.opacity)
+                }
             }
 
             if expanded {
                 ForEach(others) { device in
-                    MenuRow {
-                        audio.select(device, direction)
-                    } label: {
-                        HStack(spacing: 8) {
-                            DeviceIcon(symbol: device.symbol)
-                            Text(device.name).lineLimit(1).truncationMode(.middle)
+                    if multi {
+                        DeviceCheckRow(device: device, checked: false) { audio.toggleOutput(device) }
+                            .help(LF("multi.add_device", device.name))
+                    } else {
+                        MenuRow {
+                            audio.select(device, direction)
+                        } label: {
+                            HStack(spacing: 8) {
+                                DeviceIcon(symbol: device.symbol)
+                                Text(device.name).lineLimit(1).truncationMode(.middle)
+                            }
                         }
+                        .help(device.name)
                     }
-                    .help(device.name)
                 }
             }
         }
     }
 }
 
+/// Unchecks an output that plays while multi-output is on.
+private struct OutputCheck {
+    let enabled: Bool
+    let action: () -> Void
+}
+
 private struct SelectedDeviceRow: View {
     @EnvironmentObject private var audio: AudioController
     let device: AudioDevice
     let direction: DeviceDirection
+    /// The system default rather than an extra output; only it stands in for a missing device.
+    let isDefault: Bool
     @Binding var showsDetail: Bool
+    var check: OutputCheck?
 
     var body: some View {
         let output = direction == .output
         let level = audio.level(of: device, direction)
-        let volume = level.volume, muted = level.muted, hasVolume = level.adjustable
+        let disabled = isDefault && audio.isDisabled(direction)
 
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
@@ -150,27 +175,36 @@ private struct SelectedDeviceRow: View {
                     .truncationMode(.middle)
                     .help(device.name)
                 Spacer(minLength: 4)
-                Text(percent(volume)).percentStyle()
+                Text(percent(level.volume)).percentStyle()
                 if output {
-                    IconToggle(symbol: "slider.vertical.3", help: L("device.processing"), isOn: $showsDetail)
+                    IconToggle(
+                        symbol: "slider.vertical.3",
+                        help: L("device.processing"),
+                        label: LF("a11y.device_processing", device.name),
+                        isOn: $showsDetail
+                    )
                 }
                 IconButton(
-                    symbol: output ? speakerSymbol(volume: volume, muted: muted) : muted ? "mic.slash.fill" : "mic.fill",
-                    help: muted ? L("action.unmute") : L("action.mute"),
-                    label: LF(muted ? "a11y.unmute" : "a11y.mute", device.name)
+                    symbol: output ? speakerSymbol(volume: level.volume, muted: level.muted) : level.muted ? "mic.slash.fill" : "mic.fill",
+                    help: level.muted ? L("action.unmute") : L("action.mute"),
+                    label: LF(level.muted ? "a11y.unmute" : "a11y.mute", device.name)
                 ) {
                     audio.toggleMute(device, direction)
                 }
-                .disabled(audio.isDisabled(direction))
+                .disabled(disabled)
+                if let check {
+                    CheckButton(checked: true, label: LF("multi.remove_device", device.name), action: check.action)
+                        .disabled(!check.enabled)
+                }
             }
-            Slider(value: Binding(get: { volume }, set: { audio.setVolume($0, for: device, direction) }), in: 0...1) {
-                Text(L(output ? "section.output" : "section.input"))
+            Slider(value: Binding(get: { level.volume }, set: { audio.setVolume($0, for: device, direction) }), in: 0...1) {
+                Text(LF("a11y.volume", device.name))
             }
             .labelsHidden()
             // Gray while muted; dragging still works and unmutes, like the system controls.
-            .tint(muted ? Color.soundOff : nil)
-            .disabled(!hasVolume || audio.isDisabled(direction))
-            .help(percent(volume))
+            .tint(level.muted ? Color.soundOff : nil)
+            .disabled(!level.adjustable || disabled)
+            .help(percent(level.volume))
             .padding(.leading, Metrics.icon + 8)
         }
     }
@@ -204,6 +238,8 @@ private struct DeviceProcessingPanel: View {
 
 private struct MultiOutputSection: View {
     @EnvironmentObject private var audio: AudioController
+    /// The output section above lists the devices to check.
+    @AppStorage("tray.outputExpanded") private var outputExpanded = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -220,26 +256,24 @@ private struct MultiOutputSection: View {
                 Spacer(minLength: 8)
                 Toggle(L("multi.global"), isOn: Binding(
                     get: { audio.state.globalMultiOutput },
-                    set: { on in withAnimation(.snappy(duration: 0.2)) { audio.setGlobalMultiOutput(on) } }
+                    set: { on in
+                        withAnimation(.snappy(duration: 0.2)) {
+                            audio.setGlobalMultiOutput(on)
+                            if on { outputExpanded = true }
+                        }
+                    }
                 ))
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .labelsHidden()
             }
 
-            if audio.state.globalMultiOutput {
-                let others = audio.outputDevices.filter { $0.id != audio.outputDeviceID }
-                if others.isEmpty {
-                    Text(L("multi.no_other_devices"))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, Metrics.icon + 8)
-                }
-                ForEach(others) { device in
-                    DeviceCheckRow(device: device, checked: audio.isGlobalOutput(device)) {
-                        audio.toggleGlobalOutput(device)
-                    }
-                }
+            if audio.state.globalMultiOutput, audio.extraOutputs.isEmpty {
+                Text(L(audio.outputDevices.count > 1 ? "multi.hint" : "multi.no_other_devices"))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, Metrics.icon + 8)
             }
         }
         .padding(.vertical, 2)

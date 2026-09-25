@@ -164,3 +164,9 @@
 "update.error.untrusted" = "下載的檔案不是 FreeAudio 開發者簽署的，因此沒有安裝。";
 "update.error.unsigned" = "這份 FreeAudio 沒有簽署，無法驗證更新。請從 GitHub 下載新版本。";
 "update.error.not_writable" = "FreeAudio 無法在目前的位置更新自己。請先移到「應用程式」檔案夾，再試一次。";
+
+"multi.hint" = "在上方的「輸出」勾選要同時播放的裝置。";
+"multi.add_device" = "同時在「%@」播放";
+"multi.remove_device" = "停止在「%@」播放";
+"a11y.volume" = "「%@」的音量";
+"a11y.device_processing" = "「%@」的平衡與等化器";

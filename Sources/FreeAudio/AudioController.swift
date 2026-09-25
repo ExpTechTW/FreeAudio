@@ -8,7 +8,8 @@ final class AudioController: ObservableObject {
     @Published private(set) var inputDevices: [AudioDevice] = []
     @Published private(set) var outputDeviceID = AudioDeviceID(kAudioObjectUnknown)
     @Published private(set) var inputDeviceID = AudioDeviceID(kAudioObjectUnknown)
-    /// Volume and mute of the default input and output, keyed like `PersistedState.deviceLevels`.
+    /// Volume and mute of the default input and output, and of the extra outputs while multi-output is on,
+    /// keyed like `PersistedState.deviceLevels`.
     @Published private(set) var levels: [String: DeviceLevelState] = [:]
 
     /// Running apps that played recently or have saved settings.
@@ -708,12 +709,12 @@ final class AudioController: ObservableObject {
 
     private func levelKey(_ device: AudioDevice, _ direction: DeviceDirection) -> String { "\(direction.key):\(device.uid)" }
 
-    /// The devices whose level the panel shows: the default input and output.
+    /// The devices whose level the panel shows: the default input and output, and the extra outputs.
     private var watchedDevices: [(device: AudioDevice, direction: DeviceDirection)] {
         var devices: [(device: AudioDevice, direction: DeviceDirection)] = []
         if let defaultInput { devices.append((defaultInput, .input)) }
         if let defaultOutput { devices.append((defaultOutput, .output)) }
-        return devices
+        return devices + extraOutputs.map { ($0, .output) }
     }
 
     private func refreshVolumes() {
@@ -897,21 +898,36 @@ final class AudioController: ObservableObject {
 
     func setGlobalMultiOutput(_ enabled: Bool) {
         state.globalMultiOutput = enabled
-        reconcileRoutes()
         scheduleSave()
+        outputsChanged()
     }
 
-    func isGlobalOutput(_ device: AudioDevice) -> Bool { state.globalOutputUIDs.contains(device.uid) }
+    /// Outputs playing a copy of the default one while multi-output is on: checked, connected, and not the default.
+    var extraOutputs: [AudioDevice] {
+        guard state.globalMultiOutput else { return [] }
+        return state.globalOutputUIDs.compactMap { uid in outputDevices.first { $0.uid == uid && $0.id != outputDeviceID } }
+    }
 
-    func toggleGlobalOutput(_ device: AudioDevice) {
-        if let index = state.globalOutputUIDs.firstIndex(of: device.uid) {
-            state.globalOutputUIDs.remove(at: index)
-        } else {
-            state.globalOutputUIDs.append(device.uid)
-            state.deviceNames[device.uid] = device.name
-        }
-        reconcileRoutes()
+    /// Checks or unchecks an output while multi-output is on; see `MultiOutput.toggle`.
+    func toggleOutput(_ device: AudioDevice) {
+        guard let main = defaultOutput,
+              let next = MultiOutput.toggle(
+                  device.uid, in: .init(main: main.uid, extras: state.globalOutputUIDs), connected: Set(outputDevices.map(\.uid))
+              ) else { return }
+        state.globalOutputUIDs = next.extras
+        state.deviceNames[device.uid] = device.name
         scheduleSave()
+        if next.main != main.uid, let newMain = outputDevices.first(where: { $0.uid == next.main }) {
+            select(newMain, .output)
+        } else {
+            outputsChanged()
+        }
+    }
+
+    private func outputsChanged() {
+        refreshVolumes()
+        installVolumeListeners()
+        reconcileRoutes()
     }
 
     // MARK: - Permission

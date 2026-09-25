@@ -164,3 +164,9 @@
 "update.error.untrusted" = "The download isn't signed by FreeAudio's developer, so it wasn't installed.";
 "update.error.unsigned" = "This copy of FreeAudio isn't signed, so it can't check an update. Download the new version from GitHub.";
 "update.error.not_writable" = "FreeAudio can't replace itself where it is. Move it to the Applications folder, then try again.";
+
+"multi.hint" = "Check the devices to play on at the same time under Output above.";
+"multi.add_device" = "Also play on %@";
+"multi.remove_device" = "Stop playing on %@";
+"a11y.volume" = "Volume of %@";
+"a11y.device_processing" = "Balance and equalizer for %@";
