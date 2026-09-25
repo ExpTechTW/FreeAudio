@@ -96,6 +96,11 @@ jobs:
           FREEAUDIO_PRERELEASE: ${{ steps.v.outputs.prerelease }}
           UPDATE_REPOSITORY: ${{ github.repository }}
           ARCHIVE: "1"
+          # Notarized, a download opens without Gatekeeper's warning.
+          NOTARIZE: "1"
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           scripts/build-app.sh
           # An installed copy refuses an update its own team didn't sign, so an ad hoc build would reach nobody.
@@ -104,6 +109,9 @@ jobs:
             echo "::error::the app isn't signed by a team"
             exit 1
           fi
+          # What a Mac decides on opening a download: it must be a notarized Developer ID app.
+          spctl --assess --type execute -vv build/FreeAudio.app 2>&1 | tee /dev/stderr | grep -q "source=Notarized Developer ID" ||
+            { echo "::error::Gatekeeper doesn't accept the app as notarized"; exit 1; }
 
       - name: Release notes
         env:

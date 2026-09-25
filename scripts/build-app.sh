@@ -6,6 +6,10 @@
 #   SIGN_IDENTITY=- scripts/build-app.sh   ad-hoc signature (macOS asks for audio permission again after every build,
 #                                          and the app can't check updates against its developer)
 #   ARCHIVE=1 scripts/build-app.sh    also zip it as build/FreeAudio-<label>.zip, the file a GitHub release carries
+#   NOTARIZE=1 scripts/build-app.sh   also have Apple notarize it, so a download opens without Gatekeeper's warning.
+#                                     Needs a Developer ID signature, APPLE_ID and APPLE_APP_SPECIFIC_PASSWORD (made at
+#                                     account.apple.com → Sign-In and Security → App-Specific Passwords); the team comes
+#                                     from the signature unless APPLE_TEAM_ID says otherwise.
 #
 # The version comes from scripts/version.sh; FREEAUDIO_LABEL/_TRAIN/_CODE/_DATE/_PRERELEASE override it (CI passes the
 # values it has checked). Without git history the build is `dev`, build 0.
@@ -83,9 +87,37 @@ if [[ -z "$IDENTITY" ]]; then
 fi
 # A Developer ID signature carries Apple's timestamp, so it stays valid after the certificate expires.
 [[ $IDENTITY == "Developer ID Application: "* ]] && TIMESTAMP=--timestamp || TIMESTAMP=--timestamp=none
-codesign --force --sign "$IDENTITY" "$TIMESTAMP" "$APP"
+# The hardened runtime, which notarization requires, on every build, so a local build runs as a release does.
+codesign --force --options runtime --sign "$IDENTITY" "$TIMESTAMP" "$APP"
 codesign --verify --strict "$APP"
 echo "Built $APP ($LABEL, $TRAIN build $CODE, $CONFIG, ${ARCHS[*]}, signed with: $IDENTITY)"
+
+if [[ -n ${NOTARIZE:-} ]]; then
+    if [[ $IDENTITY != "Developer ID Application: "* ]]; then
+        echo "error: notarizing needs a Developer ID Application signature, not $IDENTITY" >&2
+        exit 1
+    fi
+    : "${APPLE_ID:?set APPLE_ID to notarize}" "${APPLE_APP_SPECIFIC_PASSWORD:?set APPLE_APP_SPECIFIC_PASSWORD to notarize}"
+    TEAM=${APPLE_TEAM_ID:-$(codesign -dv "$APP" 2>&1 | sed -n 's/^TeamIdentifier=//p')}
+    CREDENTIALS=(--apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$TEAM")
+    SUBMISSION=build/FreeAudio-notarization.zip
+    rm -f "$SUBMISSION"
+    ditto -c -k --keepParent "$APP" "$SUBMISSION"
+    echo "Notarizing $APP (usually a few minutes)"
+    # The verdict is read from the result rather than the exit status, so a rejection still prints Apple's reasons.
+    RESULT=$(xcrun notarytool submit "$SUBMISSION" "${CREDENTIALS[@]}" --wait --timeout 30m --output-format json || true)
+    rm -f "$SUBMISSION"
+    field() { print -r -- "$RESULT" | python3 -c "import json, sys; print(json.load(sys.stdin).get('$1', ''))" 2>/dev/null; }
+    if [[ $(field status) != Accepted ]]; then
+        echo "error: notarization didn't pass: ${RESULT:-no answer from notarytool}" >&2
+        [[ -n $(field id) ]] && xcrun notarytool log "$(field id)" "${CREDENTIALS[@]}" >&2 || true
+        exit 1
+    fi
+    # The ticket goes into the app, so it opens without asking Apple, offline too.
+    xcrun stapler staple "$APP"
+    xcrun stapler validate "$APP"
+    echo "Notarized $APP ($(field id))"
+fi
 
 if [[ -n ${ARCHIVE:-} ]]; then
     ZIP=build/FreeAudio-$LABEL.zip
