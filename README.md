@@ -12,6 +12,8 @@
 [![macOS 26+](https://img.shields.io/badge/macOS-26%2B-000000?logo=apple&logoColor=white)](#下載)
 [![Discord](https://img.shields.io/discord/926545182407688273?logo=discord&logoColor=white&label=Discord&color=5865F2)](https://discord.gg/5dbHqV8ees)
 
+**繁體中文** • [English](README.en.md) • [日本語](README.ja.md)
+
 [下載](https://github.com/ExpTechTW/FreeAudio/releases/latest) • [更新日誌](https://github.com/ExpTechTW/FreeAudio/releases) • [回報問題](https://github.com/ExpTechTW/FreeAudio/issues)
 
 </div>
