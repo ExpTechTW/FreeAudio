@@ -86,16 +86,13 @@
 "permission.status_denied" = "Denied";
 "permission.status_not_determined" = "Not Allowed Yet";
 "permission.status_unknown" = "Unknown";
-"window.settings_title" = "FreeAudio Settings";
 
 "app.tagline" = "Volume, output and EQ for every app";
-"settings.general" = "General";
 "settings.launch_at_login" = "Open at Login";
 "settings.login_needs_approval" = "Allow FreeAudio in System Settings > General > Login Items.";
 "settings.remember_sound" = "Restore Sound Settings After Restart";
 "settings.remember_sound_hint" = "Remembers the output and input devices, volume and mute, and restores them when FreeAudio starts.";
 "settings.remember_sound_needs_login" = "To restore them after a restart, also turn on Open at Login.";
-"settings.devices" = "Devices";
 "settings.lock_devices" = "Keep Chosen Devices";
 "settings.lock_devices_hint" = "Uses only the speaker and microphone chosen in FreeAudio and undoes automatic switches. If a chosen device goes missing, FreeAudio turns it off and warns you instead of switching to another device.";
 "settings.input_follows_output" = "Switch Microphone with Output";
@@ -124,7 +121,6 @@
 "error.create_audio_processor" = "Creating the audio processor";
 "error.start_audio_processor" = "Starting the audio processor";
 "error.operation_failed" = "%1$@ failed (%2$d)";
-"settings.updates" = "Updates";
 
 "update.current" = "Installed Version";
 "update.kind_release" = "Release";
@@ -162,6 +158,19 @@
 "a11y.volume" = "Volume of %@";
 "a11y.device_processing" = "Sound processing for %@";
 
+"settings.page.general" = "General";
+"settings.page.general_subtitle" = "Language, opening at login, devices and permission.";
+"settings.page.updates" = "Updates";
+"settings.page.updates_subtitle" = "New versions from GitHub, notarized by Apple.";
+"settings.page.about" = "About";
+"settings.page.about_subtitle" = "Version, source code and license.";
+"about.links" = "Links";
+"about.github" = "View Source on GitHub";
+"about.changelog" = "Changelog";
+"about.issues" = "Report a Problem";
+"about.license" = "License";
+"about.license_summary" = "FreeAudio Public License: the source code is public to read and contribute to, but commercial use is prohibited, and so is building a product that competes with FreeAudio.";
+"about.read_license" = "Read the License";
 
 "tray.back" = "Back";
 "tray.per_app_off" = "Per-app volume is off.";
@@ -172,3 +181,19 @@
 "detail.sound" = "Sound";
 "detail.also_play_on" = "Also Play On";
 "detail.reset_device" = "Reset Settings for This Device";
+"settings.page.devices" = "Devices";
+"settings.page.devices_subtitle" = "How FreeAudio handles switching devices and devices you connect.";
+"settings.page.apps" = "Apps";
+"settings.page.apps_subtitle" = "Per-app sound, and the app settings FreeAudio remembers.";
+"settings.startup" = "Startup";
+"settings.launch_at_login_hint" = "Opens FreeAudio when you log in.";
+"settings.switching" = "Switching Devices";
+"settings.new_devices" = "New Devices";
+"settings.no_saved_devices" = "No output device has its own sound settings yet.";
+"settings.saved_devices_hint" = "To adjust an output's equalizer, balance and other sound settings, click › next to it in the menu bar panel.";
+"settings.per_app" = "Adjust Sound per App";
+"settings.per_app_hint" = "Gives each app its own volume, output device and sound settings. When it's off, all sound goes straight to the devices.";
+"settings.rescan" = "Rescan";
+"settings.rescan_hint" = "If sound isn't processed as set, reads devices and apps again and rebuilds all processing.";
+"update.automatic_hint" = "Checks when FreeAudio starts and every 6 hours after, and tells you when a new version is out.";
+"settings.saved_apps_hint" = "To adjust an app’s output device and sound, click › next to it in the menu bar panel.";

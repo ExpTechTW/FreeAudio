@@ -34,14 +34,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Menu bar only, also when started without the app bundle (e.g. `swift run`).
         NSApp.setActivationPolicy(.accessory)
-        _ = audio
+        SettingsWindow.shared.configure(audio: audio, language: language, updater: updater)
         updater.start()
     }
 
     /// Opening FreeAudio again (Finder, Spotlight, Launchpad) shows Settings; that also helps when the
     /// menu bar icon is hidden.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        SettingsWindow.shared.show(audio: audio, language: language, updater: updater)
+        SettingsWindow.shared.show()
         return false
     }
 }

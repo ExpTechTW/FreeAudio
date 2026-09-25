@@ -402,8 +402,6 @@ private struct AppVolumeSlider: View {
 }
 
 private struct Footer: View {
-    @EnvironmentObject private var audio: AudioController
-    @EnvironmentObject private var language: LanguageSettings
     @EnvironmentObject private var updater: Updater
 
     var body: some View {
@@ -431,7 +429,7 @@ private struct Footer: View {
                 .disabled(updater.isBusy)
             }
             MenuRow(shortcut: KeyboardShortcut(",")) {
-                SettingsWindow.shared.show(audio: audio, language: language, updater: updater)
+                SettingsWindow.shared.show()
             } label: {
                 ShortcutLabel(title: L("action.settings"), keys: "⌘,")
             }

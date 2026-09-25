@@ -86,16 +86,13 @@
 "permission.status_denied" = "已拒絕";
 "permission.status_not_determined" = "尚未允許";
 "permission.status_unknown" = "無法確認";
-"window.settings_title" = "FreeAudio 設定";
 
 "app.tagline" = "按應用程式調整音量、輸出與等化器";
-"settings.general" = "一般";
 "settings.launch_at_login" = "登入時啟動";
 "settings.login_needs_approval" = "請在「系統設定 > 一般 > 登入項目」中允許 FreeAudio。";
 "settings.remember_sound" = "重新開機後恢復聲音設定";
 "settings.remember_sound_hint" = "記住輸出與輸入裝置、音量和靜音狀態，FreeAudio 啟動時自動恢復。";
 "settings.remember_sound_needs_login" = "要在重新開機後自動恢復，請同時開啟「登入時啟動」。";
-"settings.devices" = "裝置";
 "settings.lock_devices" = "鎖定所選裝置";
 "settings.lock_devices_hint" = "只用在 FreeAudio 選的喇叭和麥克風；系統自動切換會被改回來。找不到所選裝置時停用並跳出警告，不會改用其他裝置。";
 "settings.input_follows_output" = "麥克風跟著輸出裝置切換";
@@ -124,7 +121,6 @@
 "error.create_audio_processor" = "建立音訊處理器";
 "error.start_audio_processor" = "啟動音訊處理器";
 "error.operation_failed" = "%1$@失敗（%2$d）";
-"settings.updates" = "軟體更新";
 
 "update.current" = "目前版本";
 "update.kind_release" = "正式版";
@@ -162,6 +158,19 @@
 "a11y.volume" = "「%@」的音量";
 "a11y.device_processing" = "「%@」的音效處理";
 
+"settings.page.general" = "一般";
+"settings.page.general_subtitle" = "語言、登入時啟動、裝置與權限。";
+"settings.page.updates" = "軟體更新";
+"settings.page.updates_subtitle" = "從 GitHub 取得經 Apple 公證的新版本。";
+"settings.page.about" = "關於";
+"settings.page.about_subtitle" = "版本、原始碼與授權。";
+"about.links" = "連結";
+"about.github" = "在 GitHub 查看原始碼";
+"about.changelog" = "更新日誌";
+"about.issues" = "回報問題";
+"about.license" = "授權";
+"about.license_summary" = "FreeAudio Public License：原始碼公開，可以閱讀與貢獻，但禁止商業使用，也禁止用來做出與 FreeAudio 競爭的產品。";
+"about.read_license" = "閱讀授權條款";
 
 "tray.back" = "返回";
 "tray.per_app_off" = "按應用音量已關閉。";
@@ -172,3 +181,19 @@
 "detail.sound" = "聲音";
 "detail.also_play_on" = "同時在這些裝置播放";
 "detail.reset_device" = "重置此裝置的設定";
+"settings.page.devices" = "裝置";
+"settings.page.devices_subtitle" = "選擇 FreeAudio 怎麼處理裝置的切換與新接上的裝置。";
+"settings.page.apps" = "App";
+"settings.page.apps_subtitle" = "按應用調整聲音，以及 FreeAudio 記住的 App 設定。";
+"settings.startup" = "啟動";
+"settings.launch_at_login_hint" = "登入 Mac 時自動打開 FreeAudio。";
+"settings.switching" = "切換裝置";
+"settings.new_devices" = "新裝置";
+"settings.no_saved_devices" = "還沒有調整過任何輸出裝置的聲音。";
+"settings.saved_devices_hint" = "在選單列面板中，按輸出裝置旁的 › 調整等化器、平衡與其他聲音設定。";
+"settings.per_app" = "按應用調整聲音";
+"settings.per_app_hint" = "讓每個 App 有自己的音量、輸出裝置與聲音設定。關閉時所有聲音都直接送到裝置。";
+"settings.rescan" = "重新掃描";
+"settings.rescan_hint" = "聲音沒有照設定處理時，重新讀取裝置與 App，並重建所有處理。";
+"update.automatic_hint" = "啟動時與之後每 6 小時檢查一次，有新版本時通知你。";
+"settings.saved_apps_hint" = "在選單列面板中，按 App 旁的 › 調整它的輸出裝置與聲音。";

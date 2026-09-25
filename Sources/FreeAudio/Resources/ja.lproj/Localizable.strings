@@ -86,16 +86,13 @@
 "permission.status_denied" = "拒否";
 "permission.status_not_determined" = "未許可";
 "permission.status_unknown" = "確認できません";
-"window.settings_title" = "FreeAudio 設定";
 
 "app.tagline" = "アプリごとに音量・出力・イコライザを調整";
-"settings.general" = "一般";
 "settings.launch_at_login" = "ログイン時に起動";
 "settings.login_needs_approval" = "「システム設定 > 一般 > ログイン項目」で FreeAudio を許可してください。";
 "settings.remember_sound" = "再起動後にサウンド設定を復元";
 "settings.remember_sound_hint" = "出力・入力デバイス、音量、消音の状態を記憶し、FreeAudio の起動時に自動で復元します。";
 "settings.remember_sound_needs_login" = "再起動後に自動で復元するには、「ログイン時に起動」もオンにしてください。";
-"settings.devices" = "デバイス";
 "settings.lock_devices" = "選択したデバイスを固定";
 "settings.lock_devices_hint" = "FreeAudio で選択したスピーカーとマイクだけを使い、システムの自動切り替えは元に戻します。選択したデバイスが見つからないときは無効にして警告し、ほかのデバイスには切り替えません。";
 "settings.input_follows_output" = "出力デバイスに合わせてマイクも切り替える";
@@ -124,7 +121,6 @@
 "error.create_audio_processor" = "オーディオプロセッサの作成";
 "error.start_audio_processor" = "オーディオプロセッサの起動";
 "error.operation_failed" = "%1$@に失敗しました（%2$d）";
-"settings.updates" = "アップデート";
 
 "update.current" = "現在のバージョン";
 "update.kind_release" = "正式版";
@@ -162,6 +158,19 @@
 "a11y.volume" = "「%@」の音量";
 "a11y.device_processing" = "「%@」の音声処理";
 
+"settings.page.general" = "一般";
+"settings.page.general_subtitle" = "言語、ログイン時の起動、デバイス、アクセス許可。";
+"settings.page.updates" = "アップデート";
+"settings.page.updates_subtitle" = "Apple の公証を受けた新しいバージョンを GitHub から取得します。";
+"settings.page.about" = "情報";
+"settings.page.about_subtitle" = "バージョン、ソースコード、ライセンス。";
+"about.links" = "リンク";
+"about.github" = "GitHub でソースコードを見る";
+"about.changelog" = "更新履歴";
+"about.issues" = "問題を報告";
+"about.license" = "ライセンス";
+"about.license_summary" = "FreeAudio Public License：ソースコードは公開されていて読むことも貢献することもできますが、商用利用と、FreeAudio と競合する製品の作成は禁止されています。";
+"about.read_license" = "ライセンスを読む";
 
 "tray.back" = "戻る";
 "tray.per_app_off" = "アプリ別音量はオフです。";
@@ -172,3 +181,19 @@
 "detail.sound" = "サウンド";
 "detail.also_play_on" = "同時に再生するデバイス";
 "detail.reset_device" = "このデバイスの設定をリセット";
+"settings.page.devices" = "デバイス";
+"settings.page.devices_subtitle" = "デバイスの切り替えと、新しく接続したデバイスの扱いを設定します。";
+"settings.page.apps" = "アプリ";
+"settings.page.apps_subtitle" = "アプリごとのサウンドと、FreeAudio が記憶しているアプリの設定。";
+"settings.startup" = "起動";
+"settings.launch_at_login_hint" = "Mac にログインしたときに FreeAudio を開きます。";
+"settings.switching" = "デバイスの切り替え";
+"settings.new_devices" = "新しいデバイス";
+"settings.no_saved_devices" = "サウンドを調整した出力デバイスはまだありません。";
+"settings.saved_devices_hint" = "出力デバイスのイコライザ、バランスなどのサウンド設定は、メニューバーのパネルでデバイスの横の › から調整できます。";
+"settings.per_app" = "アプリごとにサウンドを調整";
+"settings.per_app_hint" = "アプリごとに音量、出力デバイス、サウンド設定を使えるようにします。オフのときは、すべての音がそのままデバイスに送られます。";
+"settings.rescan" = "再スキャン";
+"settings.rescan_hint" = "サウンドが設定どおりに処理されないときに、デバイスとアプリを読み直し、すべての処理を作り直します。";
+"update.automatic_hint" = "起動時とその後 6 時間ごとに確認し、新しいバージョンがあればお知らせします。";
+"settings.saved_apps_hint" = "アプリの出力デバイスとサウンドは、メニューバーのパネルでアプリの横の › から調整できます。";
