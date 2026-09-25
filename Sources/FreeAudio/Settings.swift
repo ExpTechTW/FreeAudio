@@ -113,6 +113,18 @@ struct AppAudioSettings: Codable, Equatable, Sendable {
     var needsProcessing: Bool { muted || volume != 1 || balance != 0 || eq.isActive }
     var isDefault: Bool { self == AppAudioSettings() }
 
+    /// Checks or unchecks a device to play the app on as well. Checking one turns multi-output on, and unchecking
+    /// the last turns it off; devices checked before it was last turned off don't come back.
+    mutating func toggleExtraOutput(_ uid: String) {
+        if !multiOutput { extraOutputUIDs = [] }
+        if let index = extraOutputUIDs.firstIndex(of: uid) {
+            extraOutputUIDs.remove(at: index)
+        } else {
+            extraOutputUIDs.append(uid)
+        }
+        multiOutput = !extraOutputUIDs.isEmpty
+    }
+
     init() {}
 
     init(from decoder: Decoder) throws {

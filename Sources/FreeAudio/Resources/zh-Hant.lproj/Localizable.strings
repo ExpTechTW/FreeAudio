@@ -6,11 +6,9 @@
 "action.unmute" = "取消靜音";
 "action.reset" = "重置";
 "action.rescan" = "重新掃描";
-"action.expand" = "展開";
-"action.collapse" = "收合";
 "a11y.mute" = "將「%@」靜音";
 "a11y.unmute" = "取消「%@」的靜音";
-"a11y.app_settings" = "「%@」的輸出、平衡與等化器";
+"a11y.app_settings" = "「%@」的輸出與音效處理";
 
 "language.title" = "語言";
 "language.system" = "跟隨系統（%@）";
@@ -19,7 +17,6 @@
 "device.input_not_found" = "未偵測到輸入裝置";
 "device.follow_system" = "系統預設";
 "device.unavailable" = "%@（未連接）";
-"device.processing" = "輸出平衡與等化器";
 "device.processing_hint" = "套用到此裝置播放的所有聲音";
 
 "mic.on" = "麥克風可用";
@@ -39,17 +36,12 @@
 "guard.ok" = "好";
 "guard.app_missing" = "找不到「%@」，這個 App 的聲音已停用";
 
-"multi.global" = "全局多輸出";
-"multi.global_subtitle" = "將音訊鏡像到多個裝置";
-"multi.no_other_devices" = "沒有其他輸出裝置";
 
 "tray.app_volume" = "按應用音量";
 "tray.no_playing_apps" = "目前沒有正在播放音訊的應用程式";
 "conflict.warning" = "%@ 也在處理其他 App 的音訊。同時執行會讓聲音重複或互相干擾，建議先結束它。";
 
-"app.settings" = "輸出、平衡與等化器";
 "app.output_device" = "輸出裝置";
-"app.multi_output" = "多輸出";
 "app.exclude_global" = "從全局多輸出中排除";
 "app.reset" = "重置此應用程式的設定";
 
@@ -94,8 +86,8 @@
 "permission.status_denied" = "已拒絕";
 "permission.status_not_determined" = "尚未允許";
 "permission.status_unknown" = "無法確認";
-
 "window.settings_title" = "FreeAudio 設定";
+
 "app.tagline" = "按應用程式調整音量、輸出與等化器";
 "settings.general" = "一般";
 "settings.launch_at_login" = "登入時啟動";
@@ -132,8 +124,8 @@
 "error.create_audio_processor" = "建立音訊處理器";
 "error.start_audio_processor" = "啟動音訊處理器";
 "error.operation_failed" = "%1$@失敗（%2$d）";
-
 "settings.updates" = "軟體更新";
+
 "update.current" = "目前版本";
 "update.kind_release" = "正式版";
 "update.kind_prerelease" = "測試版";
@@ -165,8 +157,18 @@
 "update.error.unsigned" = "這份 FreeAudio 沒有簽署，無法驗證更新。請從 GitHub 下載新版本。";
 "update.error.not_writable" = "FreeAudio 無法在目前的位置更新自己。請先移到「應用程式」檔案夾，再試一次。";
 
-"multi.hint" = "在上方的「輸出」勾選要同時播放的裝置。";
 "multi.add_device" = "同時在「%@」播放";
 "multi.remove_device" = "停止在「%@」播放";
 "a11y.volume" = "「%@」的音量";
-"a11y.device_processing" = "「%@」的平衡與等化器";
+"a11y.device_processing" = "「%@」的音效處理";
+
+
+"tray.back" = "返回";
+"tray.per_app_off" = "按應用音量已關閉。";
+"action.turn_on" = "開啟";
+"app.playing" = "正在播放";
+"app.not_playing" = "目前沒有播放";
+"detail.volume" = "音量";
+"detail.sound" = "聲音";
+"detail.also_play_on" = "同時在這些裝置播放";
+"detail.reset_device" = "重置此裝置的設定";

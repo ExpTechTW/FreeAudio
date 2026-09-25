@@ -11,6 +11,32 @@ extension Color {
     static let soundOff = Color(nsColor: .darkGray)
 }
 
+/// Controls that belong together, on a rounded background like a module in Control Center.
+struct Card<Content: View>: View {
+    var title: String?
+    @ViewBuilder let content: Content
+
+    init(title: String? = nil, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let title {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.isHeader)
+            }
+            content
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
 /// Round device icon, filled with the accent colour when selected, as in the system Sound menu.
 struct DeviceIcon: View {
     let symbol: String
@@ -26,36 +52,16 @@ struct DeviceIcon: View {
     }
 }
 
-/// Section title with an optional trailing control and disclosure chevron.
-struct SectionHeader<Accessory: View>: View {
-    let title: String
-    var expanded: Binding<Bool>?
-    @ViewBuilder var accessory: Accessory
+struct AppIcon: View {
+    let app: AudioApp
+    var size = Metrics.icon
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
-            accessory
-            if let expanded {
-                Button {
-                    withAnimation(.snappy(duration: 0.2)) { expanded.wrappedValue.toggle() }
-                } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.subheadline.weight(.semibold))
-                        .rotationEffect(.degrees(expanded.wrappedValue ? 0 : -90))
-                        .frame(width: 20, height: 20)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel(title)
-                .accessibilityValue(expanded.wrappedValue ? L("action.collapse") : L("action.expand"))
-            }
-        }
-        .frame(minHeight: 22)
+        Image(nsImage: app.icon)
+            .resizable()
+            .interpolation(.high)
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 }
 
@@ -115,21 +121,91 @@ struct IconButton: View {
     }
 }
 
-/// An icon button that shows its on state with a background, as the HIG asks of toggle buttons.
-struct IconToggle: View {
-    let symbol: String
-    let help: String
-    var label: String?
-    @Binding var isOn: Bool
+/// The › at the end of a row that opens everything about it, as in System Settings.
+struct DetailButton: View {
+    let label: String
+    let action: () -> Void
 
     var body: some View {
-        Toggle(isOn: Binding(get: { isOn }, set: { on in withAnimation(.snappy(duration: 0.2)) { isOn = on } })) {
-            Image(systemName: symbol)
+        Button(action: action) {
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
         }
-        .toggleStyle(.button)
-        .controlSize(.small)
-        .help(help)
-        .accessibilityLabel(label ?? help)
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .help(label)
+        .accessibilityLabel(label)
+    }
+}
+
+/// A label on the left and its control on the right.
+struct LabeledRow<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(title).lineLimit(1).layoutPriority(1)
+            Spacer(minLength: 4)
+            content
+        }
+        .frame(minHeight: 24)
+    }
+}
+
+/// A label on the left and a switch on the right.
+struct SwitchRow: View {
+    let title: String
+    let isOn: Bool
+    let onChange: (Bool) -> Void
+
+    init(_ title: String, isOn: Bool, onChange: @escaping (Bool) -> Void) {
+        self.title = title
+        self.isOn = isOn
+        self.onChange = onChange
+    }
+
+    var body: some View {
+        LabeledRow(title) {
+            Toggle(title, isOn: Binding(get: { isOn }, set: { onChange($0) }))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .labelsHidden()
+        }
+    }
+}
+
+/// Something that needs attention, tinted by how much.
+struct Notice<Actions: View>: View {
+    let symbol: String
+    let tint: Color
+    var title: String?
+    let text: String
+    @ViewBuilder let actions: Actions
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: symbol)
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 8) {
+                if let title {
+                    Text(title).font(.headline).fixedSize(horizontal: false, vertical: true)
+                }
+                Text(text).font(.callout).fixedSize(horizontal: false, vertical: true)
+                actions.controlSize(.small)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
@@ -267,6 +343,35 @@ struct BalanceSlider: View {
     }
 }
 
+// MARK: - Summaries
+
+extension DeviceAudioSettings {
+    /// What FreeAudio does to the device's sound, in a few words; `nil` when nothing.
+    var summary: String? {
+        var parts: [String] = []
+        if eq.isActive { parts.append(LF("summary.eq", eq.preset.title)) }
+        if balance != 0 { parts.append(balanceSummary(balance)) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}
+
+extension AppAudioSettings {
+    /// What FreeAudio does to the app's sound besides its volume and mute, in a few words; `nil` when nothing.
+    func summary(deviceName: (String) -> String) -> String? {
+        var parts: [String] = []
+        if let uid = outputUID { parts.append(LF("summary.output", deviceName(uid))) }
+        if multiOutput, !extraOutputUIDs.isEmpty { parts.append(L("summary.multi")) }
+        if eq.isActive { parts.append(LF("summary.eq", eq.preset.title)) }
+        if balance != 0 { parts.append(balanceSummary(balance)) }
+        if excludeFromGlobal { parts.append(L("summary.excluded")) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}
+
+private func balanceSummary(_ balance: Double) -> String {
+    LF("summary.balance", "\(L(balance < 0 ? "balance.left" : "balance.right")) \(percent(abs(balance)))")
+}
+
 // MARK: - Equalizer
 
 /// The Music app's equalizer: on/off, preset menu, preamp, a dB scale and ten band sliders.
@@ -289,9 +394,11 @@ struct EqualizerPanel: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
+                .controlSize(.small)
                 .fixedSize()
                 Toggle(L("eq.title"), isOn: Binding(get: { settings.enabled }, set: { on in change { $0.enabled = on } }))
                     .toggleStyle(.switch)
+                    .controlSize(.small)
                     .labelsHidden()
             }
 

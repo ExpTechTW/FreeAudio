@@ -918,25 +918,23 @@ final class AudioController: ObservableObject {
         scheduleSave()
     }
 
-    func setGlobalMultiOutput(_ enabled: Bool) {
-        state.globalMultiOutput = enabled
-        scheduleSave()
-        outputsChanged()
-    }
-
     /// Outputs playing a copy of the default one while multi-output is on: checked, connected, and not the default.
     var extraOutputs: [AudioDevice] {
         guard state.globalMultiOutput else { return [] }
         return state.globalOutputUIDs.compactMap { uid in outputDevices.first { $0.uid == uid && $0.id != outputDeviceID } }
     }
 
-    /// Checks or unchecks an output while multi-output is on; see `MultiOutput.toggle`.
+    /// Checks or unchecks an output to play along with the main one, like an AirPlay speaker; see `MultiOutput.toggle`.
+    /// Checking one turns multi-output on, and unchecking the last one that's connected turns it off.
     func toggleOutput(_ device: AudioDevice) {
+        let connected = Set(outputDevices.map(\.uid))
         guard let main = defaultOutput,
               let next = MultiOutput.toggle(
-                  device.uid, in: .init(main: main.uid, extras: state.globalOutputUIDs), connected: Set(outputDevices.map(\.uid))
+                  device.uid, in: .init(main: main.uid, extras: state.globalMultiOutput ? state.globalOutputUIDs : []), connected: connected
               ) else { return }
-        state.globalOutputUIDs = next.extras
+        let on = next.extras.contains { $0 != next.main && connected.contains($0) }
+        state.globalMultiOutput = on
+        state.globalOutputUIDs = on ? next.extras : []
         state.deviceNames[device.uid] = device.name
         scheduleSave()
         if next.main != main.uid, let newMain = outputDevices.first(where: { $0.uid == next.main }) {

@@ -6,11 +6,9 @@
 "action.unmute" = "消音を解除";
 "action.reset" = "リセット";
 "action.rescan" = "再スキャン";
-"action.expand" = "展開";
-"action.collapse" = "折りたたむ";
 "a11y.mute" = "「%@」を消音";
 "a11y.unmute" = "「%@」の消音を解除";
-"a11y.app_settings" = "「%@」の出力、バランス、イコライザ";
+"a11y.app_settings" = "「%@」の出力と音声処理";
 
 "language.title" = "言語";
 "language.system" = "システムに合わせる（%@）";
@@ -19,7 +17,6 @@
 "device.input_not_found" = "入力デバイスが見つかりません";
 "device.follow_system" = "システムのデフォルト";
 "device.unavailable" = "%@（未接続）";
-"device.processing" = "出力のバランスとイコライザ";
 "device.processing_hint" = "このデバイスで再生されるすべてのサウンドに適用されます";
 
 "mic.on" = "マイクは使用可能";
@@ -39,17 +36,12 @@
 "guard.ok" = "OK";
 "guard.app_missing" = "「%@」が見つからないため、このアプリの音を無効にしています";
 
-"multi.global" = "全体マルチ出力";
-"multi.global_subtitle" = "複数のデバイスへ同時に出力";
-"multi.no_other_devices" = "ほかの出力デバイスがありません";
 
 "tray.app_volume" = "アプリ別音量";
 "tray.no_playing_apps" = "オーディオを再生中のアプリはありません";
 "conflict.warning" = "%@ もほかのアプリのオーディオを処理しています。同時に使うとサウンドが二重になったり干渉したりするため、終了することをおすすめします。";
 
-"app.settings" = "出力、バランス、イコライザ";
 "app.output_device" = "出力デバイス";
-"app.multi_output" = "マルチ出力";
 "app.exclude_global" = "全体マルチ出力から除外";
 "app.reset" = "このアプリの設定をリセット";
 
@@ -94,8 +86,8 @@
 "permission.status_denied" = "拒否";
 "permission.status_not_determined" = "未許可";
 "permission.status_unknown" = "確認できません";
-
 "window.settings_title" = "FreeAudio 設定";
+
 "app.tagline" = "アプリごとに音量・出力・イコライザを調整";
 "settings.general" = "一般";
 "settings.launch_at_login" = "ログイン時に起動";
@@ -132,8 +124,8 @@
 "error.create_audio_processor" = "オーディオプロセッサの作成";
 "error.start_audio_processor" = "オーディオプロセッサの起動";
 "error.operation_failed" = "%1$@に失敗しました（%2$d）";
-
 "settings.updates" = "アップデート";
+
 "update.current" = "現在のバージョン";
 "update.kind_release" = "正式版";
 "update.kind_prerelease" = "テスト版";
@@ -165,8 +157,18 @@
 "update.error.unsigned" = "この FreeAudio は署名されていないため、アップデートを検証できません。GitHub から新しいバージョンをダウンロードしてください。";
 "update.error.not_writable" = "FreeAudio は現在の場所では自分自身を置き換えられません。「アプリケーション」フォルダに移動してから、もう一度お試しください。";
 
-"multi.hint" = "上の「出力」で、同時に再生するデバイスにチェックを付けてください。";
 "multi.add_device" = "「%@」でも再生";
 "multi.remove_device" = "「%@」での再生を停止";
 "a11y.volume" = "「%@」の音量";
-"a11y.device_processing" = "「%@」のバランスとイコライザ";
+"a11y.device_processing" = "「%@」の音声処理";
+
+
+"tray.back" = "戻る";
+"tray.per_app_off" = "アプリ別音量はオフです。";
+"action.turn_on" = "オンにする";
+"app.playing" = "再生中";
+"app.not_playing" = "再生していません";
+"detail.volume" = "音量";
+"detail.sound" = "サウンド";
+"detail.also_play_on" = "同時に再生するデバイス";
+"detail.reset_device" = "このデバイスの設定をリセット";

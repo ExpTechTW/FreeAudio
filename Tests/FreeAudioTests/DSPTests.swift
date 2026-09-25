@@ -373,6 +373,19 @@ private func renderer(
         #expect(settings.gain == 0)
     }
 
+    @Test func checkingExtraOutputsTurnsMultiOutputOnAndOff() {
+        var settings = AppAudioSettings()
+        // Checked once, then multi-output was turned off: that device doesn't come back.
+        settings.extraOutputUIDs = ["old"]
+        settings.toggleExtraOutput("tv")
+        #expect(settings.multiOutput && settings.extraOutputUIDs == ["tv"])
+        settings.toggleExtraOutput("headphones")
+        settings.toggleExtraOutput("tv")
+        #expect(settings.multiOutput && settings.extraOutputUIDs == ["headphones"])
+        settings.toggleExtraOutput("headphones")
+        #expect(!settings.multiOutput && settings.extraOutputUIDs.isEmpty && settings.isDefault)
+    }
+
     @Test func routingNeedsFollowTheSettings() {
         var settings = AppAudioSettings()
         #expect(settings.isDefault && !settings.needsProcessing && !settings.isSilenced)

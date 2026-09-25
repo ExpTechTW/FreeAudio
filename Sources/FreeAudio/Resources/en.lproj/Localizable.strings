@@ -6,11 +6,9 @@
 "action.unmute" = "Unmute";
 "action.reset" = "Reset";
 "action.rescan" = "Rescan";
-"action.expand" = "Expand";
-"action.collapse" = "Collapse";
 "a11y.mute" = "Mute %@";
 "a11y.unmute" = "Unmute %@";
-"a11y.app_settings" = "Output, balance and equalizer for %@";
+"a11y.app_settings" = "Output and sound processing for %@";
 
 "language.title" = "Language";
 "language.system" = "System (%@)";
@@ -19,7 +17,6 @@
 "device.input_not_found" = "No input device detected";
 "device.follow_system" = "System Default";
 "device.unavailable" = "%@ (not connected)";
-"device.processing" = "Output balance and equalizer";
 "device.processing_hint" = "Applies to everything playing on this device";
 
 "mic.on" = "Microphone available";
@@ -39,17 +36,12 @@
 "guard.ok" = "OK";
 "guard.app_missing" = "“%@” isn’t connected, so this app’s sound is off";
 
-"multi.global" = "Global Multi-Output";
-"multi.global_subtitle" = "Mirror audio to multiple devices";
-"multi.no_other_devices" = "No other output devices";
 
 "tray.app_volume" = "Per-App Volume";
 "tray.no_playing_apps" = "No apps are playing audio";
 "conflict.warning" = "%@ is also processing other apps' audio. Running both can double or garble the sound; quit it first.";
 
-"app.settings" = "Output, balance and equalizer";
 "app.output_device" = "Output Device";
-"app.multi_output" = "Multi-Output";
 "app.exclude_global" = "Exclude from Global Multi-Output";
 "app.reset" = "Reset Settings for This App";
 
@@ -94,8 +86,8 @@
 "permission.status_denied" = "Denied";
 "permission.status_not_determined" = "Not Allowed Yet";
 "permission.status_unknown" = "Unknown";
-
 "window.settings_title" = "FreeAudio Settings";
+
 "app.tagline" = "Volume, output and EQ for every app";
 "settings.general" = "General";
 "settings.launch_at_login" = "Open at Login";
@@ -132,8 +124,8 @@
 "error.create_audio_processor" = "Creating the audio processor";
 "error.start_audio_processor" = "Starting the audio processor";
 "error.operation_failed" = "%1$@ failed (%2$d)";
-
 "settings.updates" = "Updates";
+
 "update.current" = "Installed Version";
 "update.kind_release" = "Release";
 "update.kind_prerelease" = "Pre-release";
@@ -165,8 +157,18 @@
 "update.error.unsigned" = "This copy of FreeAudio isn't signed, so it can't check an update. Download the new version from GitHub.";
 "update.error.not_writable" = "FreeAudio can't replace itself where it is. Move it to the Applications folder, then try again.";
 
-"multi.hint" = "Check the devices to play on at the same time under Output above.";
 "multi.add_device" = "Also play on %@";
 "multi.remove_device" = "Stop playing on %@";
 "a11y.volume" = "Volume of %@";
-"a11y.device_processing" = "Balance and equalizer for %@";
+"a11y.device_processing" = "Sound processing for %@";
+
+
+"tray.back" = "Back";
+"tray.per_app_off" = "Per-app volume is off.";
+"action.turn_on" = "Turn On";
+"app.playing" = "Playing";
+"app.not_playing" = "Not playing";
+"detail.volume" = "Volume";
+"detail.sound" = "Sound";
+"detail.also_play_on" = "Also Play On";
+"detail.reset_device" = "Reset Settings for This Device";
