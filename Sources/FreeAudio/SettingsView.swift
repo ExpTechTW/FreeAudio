@@ -33,7 +33,9 @@ struct SettingsView: View {
                 } label: {
                     Label(L("language.title"), systemImage: "globe")
                 }
-                Toggle(isOn: Binding(get: { launchAtLogin }, set: setLaunchAtLogin)) {
+                // A closure rather than the method itself: the Swift 6.3 compiler in Xcode 26.6 crashes turning
+                // a method into the setter SwiftUI takes.
+                Toggle(isOn: Binding(get: { launchAtLogin }, set: { setLaunchAtLogin($0) })) {
                     Label(L("settings.launch_at_login"), systemImage: "power")
                 }
                 if let loginMessage {
