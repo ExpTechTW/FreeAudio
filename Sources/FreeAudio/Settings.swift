@@ -83,9 +83,10 @@ struct EQSettings: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        try container.update(&enabled, .enabled)
+        // A preset this version doesn't know is kept as a manual curve.
         preset = (try? container.decodeIfPresent(EQPreset.self, forKey: .preset)) ?? .custom
-        preamp = try container.decodeIfPresent(Double.self, forKey: .preamp) ?? 0
+        try container.update(&preamp, .preamp)
         let stored = try container.decodeIfPresent([Double].self, forKey: .gains) ?? []
         gains = stored.count == Equalizer.bandCount ? stored : Array(repeating: 0, count: Equalizer.bandCount)
         // A named preset always uses its current official values.
@@ -116,14 +117,14 @@ struct AppAudioSettings: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        volume = try container.decodeIfPresent(Double.self, forKey: .volume) ?? 1
-        muted = try container.decodeIfPresent(Bool.self, forKey: .muted) ?? false
-        balance = try container.decodeIfPresent(Double.self, forKey: .balance) ?? 0
+        try container.update(&volume, .volume)
+        try container.update(&muted, .muted)
+        try container.update(&balance, .balance)
         outputUID = try container.decodeIfPresent(String.self, forKey: .outputUID)
-        multiOutput = try container.decodeIfPresent(Bool.self, forKey: .multiOutput) ?? false
-        extraOutputUIDs = try container.decodeIfPresent([String].self, forKey: .extraOutputUIDs) ?? []
-        excludeFromGlobal = try container.decodeIfPresent(Bool.self, forKey: .excludeFromGlobal) ?? false
-        eq = try container.decodeIfPresent(EQSettings.self, forKey: .eq) ?? EQSettings()
+        try container.update(&multiOutput, .multiOutput)
+        try container.update(&extraOutputUIDs, .extraOutputUIDs)
+        try container.update(&excludeFromGlobal, .excludeFromGlobal)
+        try container.update(&eq, .eq)
     }
 }
 
@@ -144,10 +145,10 @@ struct DeviceAudioSettings: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        balance = try container.decodeIfPresent(Double.self, forKey: .balance) ?? 0
-        eq = try container.decodeIfPresent(EQSettings.self, forKey: .eq) ?? EQSettings()
-        volume = try container.decodeIfPresent(Double.self, forKey: .volume) ?? 1
-        muted = try container.decodeIfPresent(Bool.self, forKey: .muted) ?? false
+        try container.update(&balance, .balance)
+        try container.update(&eq, .eq)
+        try container.update(&volume, .volume)
+        try container.update(&muted, .muted)
     }
 }
 
@@ -196,24 +197,24 @@ struct PersistedState: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        remembersSound = try container.decodeIfPresent(Bool.self, forKey: .remembersSound) ?? true
-        locksDevices = try container.decodeIfPresent(Bool.self, forKey: .locksDevices) ?? true
-        lockSeeded = try container.decodeIfPresent(Bool.self, forKey: .lockSeeded) ?? false
-        inputFollowsOutput = try container.decodeIfPresent(Bool.self, forKey: .inputFollowsOutput) ?? false
-        newDevicesSilent = try container.decodeIfPresent(Bool.self, forKey: .newDevicesSilent) ?? true
+        try container.update(&remembersSound, .remembersSound)
+        try container.update(&locksDevices, .locksDevices)
+        try container.update(&lockSeeded, .lockSeeded)
+        try container.update(&inputFollowsOutput, .inputFollowsOutput)
+        try container.update(&newDevicesSilent, .newDevicesSilent)
         knownDevices = try container.decodeIfPresent([String].self, forKey: .knownDevices)
-        silencedLevels = try container.decodeIfPresent([String: DeviceLevel].self, forKey: .silencedLevels) ?? [:]
-        preferredDevices = try container.decodeIfPresent([String: String].self, forKey: .preferredDevices) ?? [:]
-        deviceLevels = try container.decodeIfPresent([String: DeviceLevel].self, forKey: .deviceLevels) ?? [:]
+        try container.update(&silencedLevels, .silencedLevels)
+        try container.update(&preferredDevices, .preferredDevices)
+        try container.update(&deviceLevels, .deviceLevels)
         mutedMicrophones = try container.decodeIfPresent([String].self, forKey: .mutedMicrophones)
-        parkedMicrophones = try container.decodeIfPresent([String: Double].self, forKey: .parkedMicrophones) ?? [:]
-        perAppEnabled = try container.decodeIfPresent(Bool.self, forKey: .perAppEnabled) ?? true
-        globalMultiOutput = try container.decodeIfPresent(Bool.self, forKey: .globalMultiOutput) ?? false
-        globalOutputUIDs = try container.decodeIfPresent([String].self, forKey: .globalOutputUIDs) ?? []
-        apps = try container.decodeIfPresent([String: AppAudioSettings].self, forKey: .apps) ?? [:]
-        appNames = try container.decodeIfPresent([String: String].self, forKey: .appNames) ?? [:]
-        devices = try container.decodeIfPresent([String: DeviceAudioSettings].self, forKey: .devices) ?? [:]
-        deviceNames = try container.decodeIfPresent([String: String].self, forKey: .deviceNames) ?? [:]
+        try container.update(&parkedMicrophones, .parkedMicrophones)
+        try container.update(&perAppEnabled, .perAppEnabled)
+        try container.update(&globalMultiOutput, .globalMultiOutput)
+        try container.update(&globalOutputUIDs, .globalOutputUIDs)
+        try container.update(&apps, .apps)
+        try container.update(&appNames, .appNames)
+        try container.update(&devices, .devices)
+        try container.update(&deviceNames, .deviceNames)
     }
 
     static func load() -> PersistedState {
@@ -238,5 +239,13 @@ extension Double {
 extension Comparable {
     func clamped(to range: ClosedRange<Self>) -> Self {
         min(max(self, range.lowerBound), range.upperBound)
+    }
+}
+
+extension KeyedDecodingContainer {
+    /// Replaces `value` with the saved one if there is one, so settings saved by an older version keep the defaults
+    /// of everything added since.
+    func update<T: Decodable>(_ value: inout T, _ key: Key) throws {
+        if let saved = try decodeIfPresent(T.self, forKey: key) { value = saved }
     }
 }
