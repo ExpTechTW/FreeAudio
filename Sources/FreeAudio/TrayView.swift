@@ -62,7 +62,7 @@ struct TrayView: View {
                     HStack {
                         Text(updaterTitle(release))
                         Spacer()
-                        Image(systemName: "arrow.down.circle.fill").foregroundStyle(.tint)
+                        updateProgress
                     }
                 }
                 .disabled(updater.isBusy)
@@ -77,6 +77,17 @@ struct TrayView: View {
             } label: {
                 Text(L("action.quit"))
             }
+        }
+    }
+
+    @ViewBuilder private var updateProgress: some View {
+        switch updater.phase {
+        case .downloading(let percent):
+            ProgressView(value: Double(percent), total: 100).progressViewStyle(.circular).controlSize(.small)
+        case .installing:
+            ProgressView().controlSize(.small)
+        default:
+            Image(systemName: "arrow.down.circle.fill").foregroundStyle(.tint)
         }
     }
 
