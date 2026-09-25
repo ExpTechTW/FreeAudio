@@ -102,8 +102,6 @@
 "settings.permission" = "權限";
 "settings.audio_capture" = "系統錄音";
 "settings.permission_hint" = "FreeAudio 只在你調整應用程式的音量、輸出或等化器時處理它的聲音，音訊不會被儲存或傳送。";
-"settings.saved_apps" = "已儲存的應用程式設定";
-"settings.no_saved_apps" = "尚未調整任何應用程式";
 "settings.reset_all_apps" = "重置所有應用程式";
 "settings.saved_devices" = "已儲存的裝置設定";
 "settings.version" = "版本 %@";
@@ -243,8 +241,18 @@
 "stats.app_recording" = "錄音";
 "section.app_outputs" = "App 指定的輸出";
 "app_outputs.for" = "%@ 使用中";
+"app_outputs.for_apps" = "App 使用中";
 "app.output_muted" = "「%@」已靜音，聽不到";
 "app.output_silent" = "「%@」的音量是 0%%，聽不到";
+"app.hide" = "在選單列隱藏";
+"app.hide_hint" = "隱藏後不會出現在選單列面板；聲音設定照常套用，只能在「設定 › App」調整。";
+"app.not_running" = "未執行";
+"settings.apps" = "App";
+"settings.apps_hint" = "選一個 App，調整它的音量、輸出裝置與聲音。";
+"settings.no_apps" = "還沒有使用過音訊的 App。";
+"settings.hidden_apps" = "在選單列隱藏的 App";
+"settings.hidden_apps_hint" = "不會出現在選單列面板；聲音設定照常套用，只能在這裡調整。";
+"settings.no_hidden_apps" = "沒有隱藏的 App。在 App 的設定中，或在選單列面板的 App 上按右鍵可以隱藏。";
 "stats.by_hour" = "每小時";
 "stats.hour_readout" = "%1$@　輸出 %2$@ · 輸入 %3$@";
 "stats.timeline" = "時間軸";
@@ -257,6 +265,7 @@
 "hearing.curve_hint" = "每 5 分鐘的平均音量；線斷開的地方沒有在聽。每分鐘的數值可以匯出 CSV。";
 "app_outputs.muted" = "已靜音，%@ 聽不到";
 "app_outputs.silent" = "音量是 0%%，%@ 聽不到";
+"app_outputs.apps" = "App";
 "hearing.no_listening" = "這天沒有聆聽紀錄。";
 "stats.previous_week" = "上一週";
 "stats.next_week" = "下一週";
@@ -313,4 +322,3 @@
 "hearing.distribution" = "音量分布";
 "hearing.distribution_readout" = "%1$d dB：%2$@";
 "hearing.distribution_hint" = "每個音量聽了多久；橘色是 %d dB 以上。";
-"settings.saved_apps_hint" = "在選單列面板中，按 App 旁的 › 調整它的輸出裝置與聲音。";

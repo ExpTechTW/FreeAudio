@@ -389,6 +389,14 @@ private func renderer(
         #expect(!changed.needsProcessing)
     }
 
+    @Test func hiddenAppsAreRemembered() throws {
+        let old = try JSONDecoder().decode(PersistedState.self, from: Data(#"{"apps":{}}"#.utf8))
+        #expect(old.hiddenApps.isEmpty)
+        var state = PersistedState()
+        state.hiddenApps = ["com.apple.Music"]
+        #expect(try JSONDecoder().decode(PersistedState.self, from: JSONEncoder().encode(state)).hiddenApps == ["com.apple.Music"])
+    }
+
     @Test func checkingExtraOutputsTurnsMultiOutputOnAndOff() {
         var settings = AppAudioSettings()
         // Checked once, then multi-output was turned off: that device doesn't come back.

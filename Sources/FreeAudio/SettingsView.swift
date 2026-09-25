@@ -157,76 +157,106 @@ struct DevicesPage: View {
 
 struct AppsPage: View {
     @EnvironmentObject private var audio: AudioController
+    @State private var path: [String] = []
 
     var body: some View {
-        Form {
-            PageHeader(page: .apps)
+        let apps = audio.knownApps
+        let shown = apps.filter { !audio.isHidden($0.id) }, hidden = apps.filter { audio.isHidden($0.id) }
+        NavigationStack(path: $path) {
+            Form {
+                PageHeader(page: .apps)
 
-            Section {
-                Toggle(isOn: Binding(get: { audio.state.perAppEnabled }, set: { audio.setPerAppEnabled($0) })) {
-                    Text(L("settings.per_app"))
-                    Text(L("settings.per_app_hint"))
-                }
-            }
-
-            Section {
-                if savedApps.isEmpty {
-                    Text(L("settings.no_saved_apps")).foregroundStyle(.secondary)
-                }
-                ForEach(savedApps, id: \.self) { SavedAppRow(id: $0) }
-            } header: {
-                Text(L("settings.saved_apps"))
-            } footer: {
-                Text(L("settings.saved_apps_hint")).font(.caption).foregroundStyle(.secondary)
-            }
-
-            if !savedApps.isEmpty {
                 Section {
-                    Button(L("settings.reset_all_apps"), role: .destructive) { audio.resetAllAppSettings() }
+                    Toggle(isOn: Binding(get: { audio.state.perAppEnabled }, set: { audio.setPerAppEnabled($0) })) {
+                        Text(L("settings.per_app"))
+                        Text(L("settings.per_app_hint"))
+                    }
+                }
+
+                Section {
+                    if shown.isEmpty { Text(L("settings.no_apps")).foregroundStyle(.secondary) }
+                    ForEach(shown) { AppLink(app: $0) }
+                } header: {
+                    Text(L("settings.apps"))
+                } footer: {
+                    Text(L("settings.apps_hint")).font(.caption).foregroundStyle(.secondary)
+                }
+
+                Section {
+                    if hidden.isEmpty { Text(L("settings.no_hidden_apps")).foregroundStyle(.secondary) }
+                    ForEach(hidden) { AppLink(app: $0) }
+                } header: {
+                    Text(L("settings.hidden_apps"))
+                } footer: {
+                    Text(L("settings.hidden_apps_hint")).font(.caption).foregroundStyle(.secondary)
+                }
+
+                if !audio.state.apps.isEmpty {
+                    Section {
+                        Button(L("settings.reset_all_apps"), role: .destructive) { audio.resetAllAppSettings() }
+                    }
                 }
             }
-        }
-    }
-
-    private var savedApps: [String] {
-        audio.state.apps.keys.sorted {
-            (audio.state.appNames[$0] ?? $0).localizedStandardCompare(audio.state.appNames[$1] ?? $1) == .orderedAscending
+            .formStyle(.grouped)
+            .navigationDestination(for: String.self) { id in
+                AppSettingsPage(id: id)
+            }
         }
     }
 }
 
-/// An app whose settings FreeAudio remembers, whether it's open or not.
-private struct SavedAppRow: View {
+/// An app in Settings' list, opening its settings.
+private struct AppLink: View {
+    @EnvironmentObject private var audio: AudioController
+    let app: AudioApp
+
+    var body: some View {
+        let settings = audio.settings(for: app)
+        NavigationLink(value: app.id) {
+            HStack(spacing: 10) {
+                AppIcon(app: app, size: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(app.name)
+                    Text(detail(settings)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+        }
+    }
+
+    private func detail(_ settings: AppAudioSettings) -> String {
+        let state = L(app.isPlaying ? "app.playing" : app.processes.isEmpty ? "app.not_running" : "app.not_playing")
+        let level = [settings.muted ? L("summary.muted") : nil, settings.volume != 1 ? LF("summary.volume", percent(settings.volume)) : nil]
+        return ([state] + level.compactMap { $0 } + [settings.summary(deviceName: audio.deviceName(uid:))].compactMap { $0 }).joined(separator: " · ")
+    }
+}
+
+/// One app's settings, pushed from the list.
+private struct AppSettingsPage: View {
     @EnvironmentObject private var audio: AudioController
     let id: String
 
     var body: some View {
-        LabeledContent {
-            Button(L("action.reset")) { audio.resetSettings(forApp: id) }
-        } label: {
-            Label {
-                Text(audio.state.appNames[id] ?? id)
-                Text(summary)
-            } icon: {
-                Image(nsImage: icon).resizable().frame(width: 28, height: 28)
+        if let app = audio.knownApps.first(where: { $0.id == id }) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 12) {
+                        AppIcon(app: app, size: 44)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(app.name).font(.title2.bold())
+                            Text(L(app.isPlaying ? "app.playing" : app.processes.isEmpty ? "app.not_running" : "app.not_playing"))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    AppEditor(app: app)
+                }
+                .frame(maxWidth: 520)
+                .padding(20)
+                .frame(maxWidth: .infinity)
             }
+            .navigationTitle(app.name)
         }
-    }
-
-    private var icon: NSImage {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else {
-            return NSWorkspace.shared.icon(for: .applicationBundle)
-        }
-        return NSWorkspace.shared.icon(forFile: url.path)
-    }
-
-    private var summary: String {
-        let settings = audio.state.apps[id] ?? AppAudioSettings()
-        let level = [settings.muted ? L("summary.muted") : nil, settings.volume != 1 ? LF("summary.volume", percent(settings.volume)) : nil]
-        return (level.compactMap { $0 } + [settings.summary(deviceName: audio.deviceName(uid:))].compactMap { $0 }).joined(separator: " · ")
     }
 }
-
 
 struct UpdatesPage: View {
     @EnvironmentObject private var updater: Updater

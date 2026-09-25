@@ -102,8 +102,6 @@
 "settings.permission" = "アクセス許可";
 "settings.audio_capture" = "システムオーディオ録音";
 "settings.permission_hint" = "FreeAudio は、音量・出力・イコライザを調整したアプリのサウンドだけを処理します。オーディオが保存・送信されることはありません。";
-"settings.saved_apps" = "保存されたアプリの設定";
-"settings.no_saved_apps" = "まだ調整したアプリはありません";
 "settings.reset_all_apps" = "すべてのアプリをリセット";
 "settings.saved_devices" = "保存されたデバイスの設定";
 "settings.version" = "バージョン %@";
@@ -243,8 +241,18 @@
 "stats.app_recording" = "録音";
 "section.app_outputs" = "アプリ専用の出力";
 "app_outputs.for" = "%@ が使用中";
+"app_outputs.for_apps" = "アプリが使用中";
 "app.output_muted" = "「%@」はミュートされているため聞こえません";
 "app.output_silent" = "「%@」の音量が 0%% のため聞こえません";
+"app.hide" = "メニューバーで非表示";
+"app.hide_hint" = "メニューバーのパネルに表示されなくなります。サウンド設定はそのまま適用され、「設定 › アプリ」で調整します。";
+"app.not_running" = "起動していません";
+"settings.apps" = "アプリ";
+"settings.apps_hint" = "アプリを選ぶと、音量、出力デバイス、サウンドを調整できます。";
+"settings.no_apps" = "オーディオを使ったアプリはまだありません。";
+"settings.hidden_apps" = "メニューバーで非表示のアプリ";
+"settings.hidden_apps_hint" = "メニューバーのパネルには表示されません。サウンド設定はそのまま適用され、ここで調整します。";
+"settings.no_hidden_apps" = "非表示のアプリはありません。アプリの設定で、またはメニューバーのパネルでアプリを右クリックして非表示にできます。";
 "stats.by_hour" = "時間ごと";
 "stats.hour_readout" = "%1$@　出力 %2$@ · 入力 %3$@";
 "stats.timeline" = "タイムライン";
@@ -257,6 +265,7 @@
 "hearing.curve_hint" = "5 分ごとの平均音量です。線が途切れているところは聞いていません。1 分ごとの値は CSV で書き出せます。";
 "app_outputs.muted" = "ミュート中のため %@ が聞こえません";
 "app_outputs.silent" = "音量が 0%% のため %@ が聞こえません";
+"app_outputs.apps" = "アプリ";
 "hearing.no_listening" = "この日の記録はありません。";
 "stats.previous_week" = "前の週";
 "stats.next_week" = "次の週";
@@ -313,4 +322,3 @@
 "hearing.distribution" = "音量の分布";
 "hearing.distribution_readout" = "%1$d dB：%2$@";
 "hearing.distribution_hint" = "音量ごとの時間です。オレンジは %d dB 以上です。";
-"settings.saved_apps_hint" = "アプリの出力デバイスとサウンドは、メニューバーのパネルでアプリの横の › から調整できます。";

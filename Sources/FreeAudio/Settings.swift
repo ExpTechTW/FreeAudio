@@ -231,6 +231,8 @@ struct PersistedState: Codable, Equatable {
     var globalMultiOutput = false
     var globalOutputUIDs: [String] = []
     var apps: [String: AppAudioSettings] = [:]
+    /// Apps left out of the menu bar panel, by bundle identifier; they're adjusted in Settings.
+    var hiddenApps: [String] = []
     var appNames: [String: String] = [:]
     var devices: [String: DeviceAudioSettings] = [:]
     var deviceNames: [String: String] = [:]
@@ -256,6 +258,7 @@ struct PersistedState: Codable, Equatable {
         try container.update(&globalMultiOutput, .globalMultiOutput)
         try container.update(&globalOutputUIDs, .globalOutputUIDs)
         try container.update(&apps, .apps)
+        try container.update(&hiddenApps, .hiddenApps)
         try container.update(&appNames, .appNames)
         try container.update(&devices, .devices)
         try container.update(&deviceNames, .deviceNames)

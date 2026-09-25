@@ -102,8 +102,6 @@
 "settings.permission" = "Permission";
 "settings.audio_capture" = "System Audio Recording";
 "settings.permission_hint" = "FreeAudio only processes the sound of apps whose volume, output or equalizer you change. Audio is never stored or sent anywhere.";
-"settings.saved_apps" = "Saved App Settings";
-"settings.no_saved_apps" = "No apps adjusted yet";
 "settings.reset_all_apps" = "Reset All Apps";
 "settings.saved_devices" = "Saved Device Settings";
 "settings.version" = "Version %@";
@@ -243,8 +241,18 @@
 "stats.app_recording" = "Recording";
 "section.app_outputs" = "App Outputs";
 "app_outputs.for" = "Used by %@";
+"app_outputs.for_apps" = "Used by apps";
 "app.output_muted" = "%@ is muted, so it can’t be heard";
 "app.output_silent" = "%@ is at 0%%, so it can’t be heard";
+"app.hide" = "Hide in Menu Bar";
+"app.hide_hint" = "It won’t appear in the menu bar panel. Its sound settings still apply, and you adjust them in Settings › Apps.";
+"app.not_running" = "Not running";
+"settings.apps" = "Apps";
+"settings.apps_hint" = "Choose an app to adjust its volume, output device and sound.";
+"settings.no_apps" = "No app has used audio yet.";
+"settings.hidden_apps" = "Hidden in the Menu Bar";
+"settings.hidden_apps_hint" = "They don’t appear in the menu bar panel. Their sound settings still apply, and you adjust them here.";
+"settings.no_hidden_apps" = "No hidden apps. Hide one in its settings, or by Control-clicking it in the menu bar panel.";
 "stats.by_hour" = "By Hour";
 "stats.hour_readout" = "%1$@ · output %2$@ · input %3$@";
 "stats.timeline" = "Timeline";
@@ -257,6 +265,7 @@
 "hearing.curve_hint" = "The average level of every 5 minutes; gaps are times nothing was heard. Export CSV for every minute.";
 "app_outputs.muted" = "Muted, so %@ can’t be heard";
 "app_outputs.silent" = "At 0%%, so %@ can’t be heard";
+"app_outputs.apps" = "apps";
 "hearing.no_listening" = "Nothing was heard this day.";
 "stats.previous_week" = "Previous Week";
 "stats.next_week" = "Next Week";
@@ -313,4 +322,3 @@
 "hearing.distribution" = "Level Spread";
 "hearing.distribution_readout" = "%1$d dB: %2$@";
 "hearing.distribution_hint" = "How long each level was heard; orange is %d dB and up.";
-"settings.saved_apps_hint" = "To adjust an app’s output device and sound, click › next to it in the menu bar panel.";

@@ -51,7 +51,8 @@ final class AudioController: ObservableObject {
     private var warningTask: Task<Void, Never>?
     private var warningPanel: WarningPanel?
     private lazy var monitor = ProcessMonitor { [weak self] in self?.processesChanged() }
-    private var runningApps: [AudioApp] = []
+    /// Every app that has used audio since it started, playing or not.
+    @Published private(set) var runningApps: [AudioApp] = []
     private var ownProcesses: [AudioObjectID] = []
     private var reRouters: [AudioObjectID] = []
     /// Apps playing now, and when each was last heard.
@@ -876,7 +877,8 @@ final class AudioController: ObservableObject {
         guard settings != (state.apps[id] ?? AppAudioSettings()) else { return }
         if settings.isDefault {
             state.apps[id] = nil
-            state.appNames[id] = nil
+            // A hidden app stays listed in Settings under its name.
+            if !state.hiddenApps.contains(id) { state.appNames[id] = nil }
         } else {
             state.apps[id] = settings
             if let name { state.appNames[id] = name }
@@ -885,6 +887,35 @@ final class AudioController: ObservableObject {
         // The outputs apps are sent to show their level.
         outputsChanged()
         scheduleSave()
+    }
+
+    func isHidden(_ id: String) -> Bool { state.hiddenApps.contains(id) }
+
+    /// Leaves an app out of the menu bar panel, or brings it back.
+    func setHidden(_ hidden: Bool, app id: String, name: String) {
+        state.hiddenApps.removeAll { $0 == id }
+        if hidden {
+            state.hiddenApps = (state.hiddenApps + [id]).sorted()
+            state.appNames[id] = name
+        } else if state.apps[id] == nil {
+            state.appNames[id] = nil
+        }
+        updateVisibleApps(now: Date())
+        scheduleSave()
+    }
+
+    /// Running apps, and apps with settings or hidden that aren't running, by name.
+    var knownApps: [AudioApp] {
+        let running = Set(runningApps.map(\.id))
+        let others = Set(state.apps.keys).union(state.hiddenApps).subtracting(running).map { id in
+            let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)
+            return AudioApp(
+                id: id, name: state.appNames[id] ?? url.map { FileManager.default.displayName(atPath: $0.path) } ?? id,
+                icon: url.map { NSWorkspace.shared.icon(forFile: $0.path) } ?? NSWorkspace.shared.icon(for: .applicationBundle),
+                processes: [], isPlaying: false
+            )
+        }
+        return (runningApps + others).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     func setPerAppEnabled(_ enabled: Bool) {
@@ -904,7 +935,7 @@ final class AudioController: ObservableObject {
         anyPlaying = snapshot.anyPlaying
         for app in snapshot.apps where app.isPlaying || playingApps.contains(app.id) { lastPlayed[app.id] = now }
         playingApps = Set(snapshot.apps.filter(\.isPlaying).map(\.id))
-        runningApps = snapshot.apps
+        if snapshot.apps != runningApps { runningApps = snapshot.apps }
         let running = Set(snapshot.apps.map(\.id))
         lastPlayed = lastPlayed.filter { running.contains($0.key) }
         usedDevices = usedDevices.filter { running.contains($0.key) }
@@ -921,7 +952,8 @@ final class AudioController: ObservableObject {
     private func updateVisibleApps(now: Date) {
         let visible = runningApps.filter {
             // Paused apps stay listed for a while, so their row doesn't vanish mid-adjustment.
-            state.apps[$0.id] != nil || $0.isPlaying || now.timeIntervalSince(lastPlayed[$0.id] ?? .distantPast) < 600
+            !state.hiddenApps.contains($0.id)
+                && (state.apps[$0.id] != nil || $0.isPlaying || now.timeIntervalSince(lastPlayed[$0.id] ?? .distantPast) < 600)
         }
         if visible != apps { apps = visible }
     }
