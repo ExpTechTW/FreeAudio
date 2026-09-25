@@ -93,24 +93,6 @@ struct MenuRow<Label: View>: View {
     }
 }
 
-/// A menu-style row that opens a submenu.
-struct MenuRowMenu<Label: View, Content: View>: View {
-    @ViewBuilder let content: Content
-    @ViewBuilder let label: Label
-
-    var body: some View {
-        Menu {
-            content
-        } label: {
-            label.modifier(MenuItemLabel())
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .padding(.horizontal, -6)
-    }
-}
-
 /// Small borderless icon button with a tooltip.
 struct IconButton: View {
     let symbol: String

@@ -58,19 +58,6 @@ struct TrayView: View {
                 }
                 .disabled(updater.isBusy)
             }
-            MenuRowMenu {
-                Picker(L("language.title"), selection: $language.language) {
-                    ForEach(AppLanguage.allCases) { Text($0.displayName).tag($0) }
-                }
-                .pickerStyle(.inline)
-            } label: {
-                HStack {
-                    Text(L("language.title"))
-                    Spacer()
-                    Text(language.language.displayName).foregroundStyle(.secondary)
-                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                }
-            }
             MenuRow(shortcut: KeyboardShortcut(",")) {
                 SettingsWindow.shared.show(audio: audio, language: language, updater: updater)
             } label: {
