@@ -113,31 +113,7 @@ FreeAudio が処理するのは、設定を変えたアプリとデバイスだ�
 
 ### 公開
 
-ルールは DPIP と同じです（`.github/workflows/release.yml`）：
-
-- `main` へのプッシュ：テスト版（GitHub の pre-release）を公開します。タグはその名前です（例：`26w39a`）。
-- `v<yy>.<n>` タグのプッシュ：正式版を公開します。例：`git tag -a v26.1 -m 26.1 && git push origin v26.1`
-
-どのビルドも Developer ID で署名し、Apple の公証を受け、更新履歴を Discord に投稿します。
-
-- バージョンは `scripts/version.sh` が git の履歴から決めます。`CFBundleVersion` はビルドコードで、`1`、西暦の下 2 桁、その年の何番目のコミットか（例：`126000027`）を並べたものなので、増える一方です。アプリはこれを比べてどのビルドが新しいかを判断し、比べるのは同じチャンネルの中だけです。
-- 更新履歴は `scripts/notes.sh` がコミットの項目行から作ります。テスト版には前のビルドからの変更を、正式版には前の正式版からのすべての変更を載せます。
-- アプリは GitHub の公開 API でアップデートを確認するため、リポジトリは公開しておく必要があります。
-
-CI は次のシークレットを使います：
-
-| シークレット | 内容 |
-|---|---|
-| `APPLE_CERTIFICATE`、`APPLE_CERTIFICATE_PASSWORD` | Developer ID Application 証明書（秘密鍵を含む）を書き出した .p12 を base64 にしたものと、そのパスワード |
-| `APPLE_TEAM_ID` | チーム ID |
-| `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD` | 公証に使う Apple ID と、account.apple.com で作成した App 用パスワード |
-| `DISCORD_WEBHOOK` | 省略可：更新履歴を投稿する Discord の Webhook |
-
-最初の 5 つは TREM-Lite と同じ名前で、`scripts/set-apple-secrets.sh` を使うと複数のリポジトリにまとめて設定できます。CI と同じ方法で .p12 を先に確認し、値は標準入力でだけ `gh` に渡します：
-
-```bash
-scripts/set-apple-secrets.sh DeveloperID.p12 ExpTechTW/FreeAudio ExpTechTW/TREM-Lite
-```
+ルールは DPIP と同じです。`main` へのプッシュごとにテスト版が、`v<yy>.<n>` タグ（例：`v26.1`）で正式版が公開されます。どのビルドも Developer ID で署名して Apple の公証を受け、更新履歴はコミットの項目行から自動で作られ（[commit.md](commit.md) を参照）、Discord に投稿されます。
 
 ## ライセンス
 

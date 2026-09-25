@@ -113,31 +113,7 @@ FreeAudio 只處理你改過設定的 App 與裝置。每一條「路由」是�
 
 ### 發布
 
-沿用 DPIP 的規則（`.github/workflows/release.yml`）：
-
-- 推送到 `main`：發布測試版，也就是 GitHub 上的 pre-release，tag 就是它的名稱（例如 `26w39a`）。
-- 推送 `v<yy>.<n>` tag：發布正式版，例如 `git tag -a v26.1 -m 26.1 && git push origin v26.1`。
-
-每個版本都以 Developer ID 簽署、經 Apple 公證，並把更新日誌貼到 Discord。
-
-- 版本號由 `scripts/version.sh` 依 git 紀錄決定。`CFBundleVersion` 是 build code：`1`、兩位數年份、今年第幾個 commit（例如 `126000027`），只會往上長。App 用它判斷哪個版本比較新，而且只和同一個通道比。
-- 更新日誌由 `scripts/notes.sh` 從 commit 的條目行產生：測試版列出上一個版本之後的變更，正式版列出上一個正式版之後的全部變更。
-- App 透過 GitHub 的公開 API 檢查更新，所以 repository 必須公開。
-
-CI 使用這些 secret：
-
-| Secret | 內容 |
-|---|---|
-| `APPLE_CERTIFICATE`、`APPLE_CERTIFICATE_PASSWORD` | Developer ID Application 憑證（含私鑰）匯出的 .p12，base64 編碼，以及它的密碼 |
-| `APPLE_TEAM_ID` | 團隊 ID |
-| `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD` | 公證用的 Apple ID，與在 account.apple.com 建立的 App 專用密碼 |
-| `DISCORD_WEBHOOK` | 選填：發布後公告更新日誌的 Discord webhook |
-
-前五個和 TREM-Lite 同名，可以用 `scripts/set-apple-secrets.sh` 一次設定到多個 repository。它會先用和 CI 相同的方式檢查 .p12，值只經由標準輸入交給 `gh`：
-
-```bash
-scripts/set-apple-secrets.sh DeveloperID.p12 ExpTechTW/FreeAudio ExpTechTW/TREM-Lite
-```
+沿用 DPIP 的規則：推送到 `main` 會自動發布測試版，推送 `v<yy>.<n>` tag（例如 `v26.1`）會發布正式版。每個版本都以 Developer ID 簽署、經 Apple 公證；更新日誌由 commit 的條目行自動產生（見 [commit.md](commit.md)），並公告到 Discord。
 
 ## 授權
 

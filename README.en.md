@@ -113,31 +113,7 @@ FreeAudio only processes the apps and devices whose settings you changed. Each "
 
 ### Publishing
 
-The rules follow DPIP's (`.github/workflows/release.yml`):
-
-- A push to `main` publishes a pre-release on GitHub, tagged with its name (for example `26w39a`).
-- A `v<yy>.<n>` tag publishes a release, for example `git tag -a v26.1 -m 26.1 && git push origin v26.1`.
-
-Every build is signed with Developer ID, notarized by Apple, and its changelog is posted to Discord.
-
-- `scripts/version.sh` works out the version from the git history. `CFBundleVersion` is the build code: `1`, the two-digit year, and the commit's number within that year (for example `126000027`), so it only ever goes up. The app compares it to decide which build is newer, within the same channel only.
-- `scripts/notes.sh` writes the changelog from the commits' entry lines: a pre-release lists the changes since the previous build, and a release everything since the previous release.
-- The app checks for updates through GitHub's public API, so the repository has to be public.
-
-CI uses these secrets:
-
-| Secret | What it holds |
-|---|---|
-| `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD` | The Developer ID Application certificate and its private key, exported as a .p12 and base64-encoded, and its password |
-| `APPLE_TEAM_ID` | The team ID |
-| `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` | The Apple ID for notarization, and an app-specific password made at account.apple.com |
-| `DISCORD_WEBHOOK` | Optional: the Discord webhook that announces each changelog |
-
-The first five share their names with TREM-Lite's, and `scripts/set-apple-secrets.sh` sets them on several repositories at once. It checks the .p12 the way CI will use it first, and hands the values to `gh` on standard input only:
-
-```bash
-scripts/set-apple-secrets.sh DeveloperID.p12 ExpTechTW/FreeAudio ExpTechTW/TREM-Lite
-```
+The rules follow DPIP's: every push to `main` publishes a pre-release, and a `v<yy>.<n>` tag (such as `v26.1`) publishes a release. Every build is signed with Developer ID and notarized by Apple; its changelog is written from the commits' entry lines (see [commit.md](commit.md)) and announced on Discord.
 
 ## License
 
