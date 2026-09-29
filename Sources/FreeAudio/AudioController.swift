@@ -615,7 +615,8 @@ final class AudioController: ObservableObject {
         installMuteGuards()
     }
 
-    /// Holds a microphone's volume at zero, keeping the level to give back when it's unmuted in FreeAudio.
+    /// Holds a microphone's volume at zero, keeping the level to give back: when it's unmuted in FreeAudio, or for one
+    /// that can mute, once it has stayed muted for `MicrophoneHold.window`.
     private func park(_ device: AudioDevice, _ reason: String) {
         if state.parkedMicrophones[device.uid] == nil {
             state.parkedMicrophones[device.uid] = AudioDevices.volume(device, .input) ?? 1
@@ -642,12 +643,19 @@ final class AudioController: ObservableObject {
         guard engineEnabled else { return }
         let now = Date()
         for device in inputDevices where isHeld(device) {
-            if state.parkedMicrophones[device.uid] != nil {
-                park(device, device.canMute ? "持續被解除靜音，保持 0%" : "麥克風沒有靜音控制，保持 0%")
+            let recent = reMutes[device.uid] ?? []
+            let muted = device.canMute && AudioDevices.isMuted(device, .input)
+            if let volume = state.parkedMicrophones[device.uid] {
+                if muted {
+                    // Held at zero while something kept unmuting it; the volume comes back once that stops.
+                    let wait = MicrophoneHold.waitBeforeGivingBack(lastMute: recent.last, now: now)
+                    if wait > 0 { retryHold(after: wait) } else { giveBackVolume(volume, device) }
+                } else {
+                    park(device, device.canMute ? "持續被解除靜音，暫時把音量設為 0%" : "麥克風沒有靜音控制，保持 0%")
+                }
             }
             guard device.canMute else { continue }
-            let recent = reMutes[device.uid] ?? []
-            let step = MicrophoneHold.step(muted: AudioDevices.isMuted(device, .input), recentMutes: recent, now: now)
+            let step = MicrophoneHold.step(muted: muted, recentMutes: recent, now: now)
             switch step {
             case .keep:
                 continue
@@ -659,10 +667,18 @@ final class AudioController: ObservableObject {
                 writeMuted(true, device, .input, parked ? nil : "在 FreeAudio 靜音，卻被系統或其他 App 解除靜音，再次靜音", level: .warn)
                 reMutes[device.uid] = MicrophoneHold.recording(now, after: recent)
                 if step == .muteAndPark, device.hasVolume {
-                    park(device, "3 秒內被解除靜音 \(MicrophoneHold.persistentCount) 次，把音量設為 0%")
+                    park(device, "3 秒內被解除靜音 \(MicrophoneHold.persistentCount) 次，暫時把音量設為 0%，停下來後還原")
+                    retryHold(after: MicrophoneHold.window)
                 }
             }
         }
+    }
+
+    /// A microphone held at zero only because something kept unmuting it gets its volume back; it stays muted.
+    private func giveBackVolume(_ volume: Double, _ device: AudioDevice) {
+        state.parkedMicrophones[device.uid] = nil
+        scheduleSave()
+        writeVolume(volume, device, .input, "已保持靜音 \(Int(MicrophoneHold.window)) 秒，還原音量（仍然靜音）")
     }
 
     private func retryHold(after delay: TimeInterval) {

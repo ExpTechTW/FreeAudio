@@ -31,6 +31,13 @@ import Testing
         #expect(step(muted: false, mutedAgo: [30, 20, 10, 5, 4]) == .mute)
     }
 
+    @Test func givesTheVolumeBackOnceItStaysMuted() {
+        // Parked by an earlier version, with nothing unmuting it since: at once.
+        #expect(MicrophoneHold.waitBeforeGivingBack(lastMute: nil, now: now) == 0)
+        #expect(abs(MicrophoneHold.waitBeforeGivingBack(lastMute: now.addingTimeInterval(-1), now: now) - (MicrophoneHold.window - 1)) < 1e-9)
+        #expect(MicrophoneHold.waitBeforeGivingBack(lastMute: now.addingTimeInterval(-MicrophoneHold.window - 1), now: now) == 0)
+    }
+
     @Test func recordsOnlyTheMutesThatStillCount() {
         let recent = [now.addingTimeInterval(-10), now.addingTimeInterval(-1)]
         #expect(MicrophoneHold.recording(now, after: recent) == [now.addingTimeInterval(-1), now])

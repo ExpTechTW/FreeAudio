@@ -11,7 +11,8 @@ enum MicrophoneHold {
         case keep
         /// Something unmuted it: mute it again.
         case mute
-        /// It keeps being unmuted: mute it again and hold its volume at zero as well, which nothing else changes.
+        /// It keeps being unmuted: mute it again and hold its volume at zero as well, which nothing else changes,
+        /// until that stops (`waitBeforeGivingBack`).
         case muteAndPark
         /// It was muted again a moment ago; try again after this long rather than spin.
         case retry(after: TimeInterval)
@@ -30,6 +31,13 @@ enum MicrophoneHold {
             return .retry(after: minimumInterval - now.timeIntervalSince(last))
         }
         return recent.count + 1 >= persistentCount ? .muteAndPark : .mute
+    }
+
+    /// How long until a microphone held at zero gets its volume back, which is once `window` has passed since it was
+    /// last muted again; 0 when that's now. It stays muted: only its volume was held.
+    static func waitBeforeGivingBack(lastMute: Date?, now: Date) -> TimeInterval {
+        guard let lastMute else { return 0 }
+        return max(window - now.timeIntervalSince(lastMute), 0)
     }
 
     /// The mutes that still count once it's muted again `now`.
