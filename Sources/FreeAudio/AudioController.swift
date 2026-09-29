@@ -94,6 +94,10 @@ final class AudioController: ObservableObject {
     private var lastVolumeWrite: [String: Date] = [:]
     /// When FreeAudio itself last changed each level, keyed like `levels`: a change seen soon after is its own.
     private var ownWrites: [String: Date] = [:]
+    /// Each device's mute as last seen while it was shown, keyed like `levels`; kept after it stops being shown.
+    private var lastSeenMuted: [String: Bool] = [:]
+    /// Devices FreeAudio just switched back to that were muted before, and when; see `keepMutedAfterSwitchBack`.
+    private var mutedAtSwitchBack: [String: Date] = [:]
     /// Apps recording right now, by name, to tell in the log when a call starts or ends.
     private var recordingApps: Set<String> = []
     private var observers: [NSObjectProtocol] = []
@@ -259,6 +263,7 @@ final class AudioController: ObservableObject {
 
     /// Only for what the user does; `reason` says what, for the log.
     private func setMuted(_ muted: Bool, _ device: AudioDevice, _ direction: DeviceDirection, _ reason: String) {
+        mutedAtSwitchBack[levelKey(device, direction)] = nil
         if direction == .input {
             setMicrophoneMuted(muted, device, reason)
         } else if device.canMute {
@@ -445,6 +450,7 @@ final class AudioController: ObservableObject {
         Log.info("device", "輸出改變時 macOS 換了麥克風，換回 \(previous.name)")
         if state.locksDevices || state.remembersSound { choose(previous, .input) }
         setDefault(previous.id, .input)
+        keepMutedAfterSwitchBack(previous, .input)
         return true
     }
 
@@ -505,6 +511,16 @@ final class AudioController: ObservableObject {
         let current = devices.first { $0.id == (direction == .output ? outputDeviceID : inputDeviceID) }
         Log.info("lock", "預設\(direction == .output ? "輸出" : "輸入")被換成 \(current?.name ?? "無")，換回鎖定的 \(device.name)")
         setDefault(id, direction)
+        keepMutedAfterSwitchBack(device, direction)
+    }
+
+    /// Switching a device back can unmute it: a call's voice processing moving onto a microphone does. A device that
+    /// was muted before it was switched away is muted again if that happens within `sideEffectWindow`
+    /// (`refreshVolumes`); unmuting it yourself in that time stands.
+    private func keepMutedAfterSwitchBack(_ device: AudioDevice, _ direction: DeviceDirection) {
+        let key = levelKey(device, direction)
+        guard device.canMute, lastSeenMuted[key] == true else { return }
+        mutedAtSwitchBack[key] = Date()
     }
 
     func dismissBlocked(_ direction: DeviceDirection) {
@@ -865,8 +881,19 @@ final class AudioController: ObservableObject {
             let key = levelKey(device, direction)
             let software = usesSoftwareLevel(device, direction)
             let volume = software ? deviceSettings(for: device.uid).volume : AudioDevices.volume(device, direction) ?? 1
-            let muted = muteState(device, direction)
-            if engineEnabled { logOutsideChange(device, direction, volume: volume, muted: muted, now: now) }
+            var muted = muteState(device, direction)
+            if engineEnabled {
+                logOutsideChange(device, direction, volume: volume, muted: muted, now: now)
+                if let since = mutedAtSwitchBack[key] {
+                    if now.timeIntervalSince(since) > Self.sideEffectWindow {
+                        mutedAtSwitchBack[key] = nil
+                    } else if !muted {
+                        writeMuted(true, device, direction, "換回後被系統或其他 App 解除靜音，恢復換走前的靜音", level: .warn)
+                        muted = true
+                    }
+                }
+                lastSeenMuted[key] = muted
+            }
             // A stand-in's silence is FreeAudio's doing, not a level to remember.
             if state.silencedLevels[key] == nil, device.hasVolume || device.canMute {
                 rememberLevel(device, direction, volume: volume, muted: muted)
