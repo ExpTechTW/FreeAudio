@@ -314,6 +314,7 @@
 "hearing.not_calibrated" = "Using the defaults";
 "hearing.reference" = "%1$@, default %2$d dB";
 "device.not_connected" = "Not connected";
+"device.stand_in" = "Standing in, kept silent";
 "hearing.dose_low" = "Well within";
 "hearing.dose_near" = "Getting close";
 "hearing.dose_over" = "Over the limit";

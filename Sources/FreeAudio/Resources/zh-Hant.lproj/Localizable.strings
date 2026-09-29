@@ -314,6 +314,7 @@
 "hearing.not_calibrated" = "使用預設值";
 "hearing.reference" = "%1$@，預設 %2$d dB";
 "device.not_connected" = "未連接";
+"device.stand_in" = "暫代中，保持靜音";
 "hearing.dose_low" = "安全範圍內";
 "hearing.dose_near" = "接近上限";
 "hearing.dose_over" = "超過上限";

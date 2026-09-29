@@ -94,7 +94,9 @@ private struct OutputCard: View {
             ForEach(playing) { device in
                 LevelRow(device: device, direction: .output, isDefault: device == main) { open(.device(device.uid)) } accessory: {
                     // The last output playing can't be unchecked.
-                    CheckButton(checked: true, label: LF("multi.remove_device", device.name)) { audio.toggleOutput(device) }
+                    CheckButton(checked: true, standIn: device == main && audio.isDisabled(.output), label: LF("multi.remove_device", device.name)) {
+                        audio.toggleOutput(device)
+                    }
                         .disabled(playing.count < 2)
                 }
             }
@@ -193,22 +195,29 @@ private struct LevelRow<Accessory: View>: View {
 
     var body: some View {
         let level = audio.level(of: device, direction)
+        // Standing in for the missing chosen device: kept silent, and says so in place of what's applied to it.
         let disabled = isDefault && audio.isDisabled(direction)
-        let summary = caption ?? (direction == .output ? audio.deviceSettings(for: device.uid).summary : nil)
+        let summary = disabled
+            ? L("device.stand_in")
+            : caption ?? (direction == .output ? audio.deviceSettings(for: device.uid).summary : nil)
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 let label = HStack(spacing: 8) {
-                    DeviceIcon(symbol: device.symbol, selected: true)
+                    DeviceIcon(symbol: device.symbol, selected: true, standIn: disabled)
                     NameAndSummary(name: device.name, summary: summary, warning: warning)
                     Spacer(minLength: 0)
                 }
                 .contentShape(Rectangle())
-                .help(device.name)
-                // Only a device with a page of its own is a button; a disabled one would look unavailable.
-                if let open {
-                    Button(action: open) { label }.buttonStyle(.plain)
+                // A stand-in is picked by clicking it, like the devices listed under it; its › still opens its page.
+                let action: (() -> Void)? = disabled ? { audio.useCurrentDevice(direction) } : open
+                // Only a row that does something is a button; a disabled one would look unavailable.
+                if let action {
+                    Button(action: action) { label }
+                        .buttonStyle(.plain)
+                        .help(disabled ? LF("guard.use_current", device.name) : device.name)
+                        .accessibilityLabel(disabled ? LF("guard.use_current", device.name) : device.name)
                 } else {
-                    label
+                    label.help(device.name)
                 }
                 Text(percent(level.volume)).percentStyle()
                 IconButton(

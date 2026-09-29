@@ -9,6 +9,9 @@ enum Metrics {
 extension Color {
     /// Fill of a slider whose sound is off (muted or disabled).
     static let soundOff = Color(nsColor: .darkGray)
+    /// A stand-in device's icon and checkmark: plainly filled, unlike a device not in use, but not the accent colour of
+    /// one the user chose.
+    static let standIn = Color(nsColor: .systemGray)
 }
 
 /// Controls that belong together, on a rounded background like a module in Control Center.
@@ -37,17 +40,19 @@ struct Card<Content: View>: View {
     }
 }
 
-/// Round device icon, filled with the accent colour when selected, as in the system Sound menu.
+/// Round device icon, filled with the accent colour when selected, as in the system Sound menu. A stand-in, which macOS
+/// fell back to while the chosen device is missing, is filled gray instead: it's in use, but not by choice, and silent.
 struct DeviceIcon: View {
     let symbol: String
     var selected = false
+    var standIn = false
 
     var body: some View {
         Image(systemName: symbol)
             .font(.callout)
-            .foregroundStyle(selected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .foregroundStyle(selected || standIn ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
             .frame(width: Metrics.icon, height: Metrics.icon)
-            .background(Circle().fill(selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.fill.tertiary)))
+            .background(Circle().fill(standIn ? AnyShapeStyle(Color.standIn) : selected ? AnyShapeStyle(.tint) : AnyShapeStyle(.fill.tertiary)))
             .accessibilityHidden(true)
     }
 }
@@ -292,11 +297,13 @@ struct DeviceCheckRow: View {
 /// The round checkbox of an output that can play along with others, as in the AirPlay list.
 struct CheckMark: View {
     let checked: Bool
+    /// Gray, like a stand-in's `DeviceIcon`.
+    var standIn = false
 
     var body: some View {
         Image(systemName: checked ? "checkmark.circle.fill" : "circle")
             .font(.body)
-            .foregroundStyle(checked ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+            .foregroundStyle(standIn ? AnyShapeStyle(Color.standIn) : checked ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
             .frame(width: 22, height: 22)
             .accessibilityHidden(true)
     }
@@ -305,12 +312,13 @@ struct CheckMark: View {
 /// A checkbox button for an output that plays while multi-output is on.
 struct CheckButton: View {
     let checked: Bool
+    var standIn = false
     let label: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            CheckMark(checked: checked).contentShape(Rectangle())
+            CheckMark(checked: checked, standIn: standIn).contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
         .help(label)

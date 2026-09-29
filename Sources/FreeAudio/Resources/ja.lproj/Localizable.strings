@@ -314,6 +314,7 @@
 "hearing.not_calibrated" = "既定値を使用";
 "hearing.reference" = "%1$@、既定値 %2$d dB";
 "device.not_connected" = "未接続";
+"device.stand_in" = "代わりに使用中・消音";
 "hearing.dose_low" = "余裕あり";
 "hearing.dose_near" = "上限に近い";
 "hearing.dose_over" = "上限超過";
