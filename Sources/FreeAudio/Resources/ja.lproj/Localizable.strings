@@ -32,6 +32,8 @@
 "guard.use_current_devices" = "現在のデバイスを使う";
 "guard.unknown_device" = "選択したデバイス";
 "guard.blocked" = "システムが「%1$@」に切り替えたため、選択中の「%2$@」に戻しました。";
+"guard.yielded" = "システムが「%1$@」への切り替えを繰り返すため、行き来しないように FreeAudio は「%2$@」に戻すのをやめました。";
+"guard.switch_back" = "「%@」に戻す";
 "guard.dismiss" = "閉じる";
 "guard.ok" = "OK";
 "guard.app_missing" = "「%@」が見つからないため、このアプリの音を無効にしています";

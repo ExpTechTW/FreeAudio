@@ -32,6 +32,8 @@
 "guard.use_current_devices" = "Use Current Devices";
 "guard.unknown_device" = "Chosen Device";
 "guard.blocked" = "The system switched to “%1$@”, so FreeAudio switched back to your chosen “%2$@”.";
+"guard.yielded" = "The system keeps switching to “%1$@”, so FreeAudio has stopped switching back to “%2$@” rather than flip between them.";
+"guard.switch_back" = "Switch Back to “%@”";
 "guard.dismiss" = "Dismiss";
 "guard.ok" = "OK";
 "guard.app_missing" = "“%@” isn’t connected, so this app’s sound is off";

@@ -309,6 +309,16 @@ private struct DeviceNotices: View {
                     Button(LF("guard.use_current", selected.name)) { audio.useCurrentDevice(direction) }
                 }
             }
+        } else if let yielded = audio.yieldedDevices[direction] {
+            Notice(symbol: "arrow.left.arrow.right", tint: .orange, text: LF("guard.yielded", yielded.device.name, yielded.chosen.name)) {
+                let back = Button(LF("guard.switch_back", yielded.chosen.name)) { audio.select(yielded.chosen, direction) }
+                let use = Button(LF("guard.use_current", yielded.device.name)) { audio.select(yielded.device, direction) }
+                // Both carry a device's name: side by side when they fit.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { back; use }
+                    VStack(alignment: .leading, spacing: 6) { back; use }
+                }
+            }
         } else if let blocked = audio.blockedDevices[direction], let selected {
             Notice(symbol: "lock.fill", tint: .accentColor, text: LF("guard.blocked", blocked.name, selected.name)) {
                 HStack(spacing: 8) {

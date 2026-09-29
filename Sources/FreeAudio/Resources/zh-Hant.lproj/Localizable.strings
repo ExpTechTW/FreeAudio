@@ -32,6 +32,8 @@
 "guard.use_current_devices" = "改用目前的裝置";
 "guard.unknown_device" = "所選裝置";
 "guard.blocked" = "系統切換到「%1$@」，已改回你選擇的「%2$@」。";
+"guard.yielded" = "系統一直切換到「%1$@」，為了不來回切換，FreeAudio 暫停改回「%2$@」。";
+"guard.switch_back" = "改回「%@」";
 "guard.dismiss" = "知道了";
 "guard.ok" = "好";
 "guard.app_missing" = "找不到「%@」，這個 App 的聲音已停用";

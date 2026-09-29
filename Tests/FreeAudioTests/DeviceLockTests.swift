@@ -46,6 +46,28 @@ import Testing
         #expect(decide(chosen: speakers.uid, devices: [speakers], current: AudioDeviceID(kAudioObjectUnknown)) == .switchBack(speakers.id))
     }
 
+    @Test func stopsWhenTheSystemKeepsSwitchingBack() {
+        // AirPods coming out of their case, 2026-09-30: macOS switched back to them within 0.1 s of every switch-back.
+        let start = Date(timeIntervalSinceReferenceDate: 1_000)
+        var fight: DeviceLock.Fight?
+        var given: [Bool] = []
+        for step in 0..<4 {
+            let next = DeviceLock.fight(after: fight, awayUID: headphones.uid, now: start.addingTimeInterval(0.55 * Double(step)))
+            given.append(DeviceLock.givesUp(next))
+            fight = next
+        }
+        #expect(given == [false, false, true, true])
+    }
+
+    @Test func switchesBackAgainAfterAQuietSpellOrFromAnotherDevice() throws {
+        let start = Date(timeIntervalSinceReferenceDate: 1_000)
+        let two = DeviceLock.fight(after: DeviceLock.fight(after: nil, awayUID: headphones.uid, now: start), awayUID: headphones.uid, now: start)
+        // Headphones reconnecting a minute later, or the TV taking over, start afresh.
+        let later = DeviceLock.fight(after: two, awayUID: headphones.uid, now: start.addingTimeInterval(60))
+        let other = DeviceLock.fight(after: two, awayUID: tv.uid, now: start.addingTimeInterval(0.5))
+        #expect(later.switchBacks == 1 && other.switchBacks == 1 && !DeviceLock.givesUp(later) && !DeviceLock.givesUp(other))
+    }
+
     @Test func findsAHeadsetsOwnMicrophoneExactly() {
         let airpodsOut = AudioDevice(id: 5001, uid: "AC-07-75-CF-A0-C4:output", name: "AirPods", symbol: "airpods.pro")
         let airpodsIn = AudioDevice(id: 5002, uid: "AC-07-75-CF-A0-C4:input", name: "AirPods", symbol: "airpods.pro")

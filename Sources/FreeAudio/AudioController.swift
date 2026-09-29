@@ -21,6 +21,8 @@ final class AudioController: ObservableObject {
     @Published private(set) var state: PersistedState
     /// Chosen devices that aren't connected; their directions are silenced until they're back.
     @Published private(set) var missingDevices: [DeviceDirection: MissingDevice] = [:]
+    /// Devices macOS keeps switching to, which FreeAudio has stopped switching away from; see `YieldedDevice`.
+    @Published private(set) var yieldedDevices: [DeviceDirection: YieldedDevice] = [:]
     /// Devices something else switched to (e.g. macOS when headphones connect) that FreeAudio switched away from.
     @Published private(set) var blockedDevices: [DeviceDirection: AudioDevice] = [:]
 
@@ -29,6 +31,10 @@ final class AudioController: ObservableObject {
     /// Directions whose chosen device is put back after launch; that isn't reported as a blocked switch.
     private var restoreOnLaunch: Set<DeviceDirection> = []
     private var lastSwitchBack: [DeviceDirection: Date] = [:]
+    private var fights: [DeviceDirection: DeviceLock.Fight] = [:]
+    /// The device macOS won a fight over, by UID. When macOS switches to it again (AirPods put back in an ear), FreeAudio
+    /// doesn't fight at all, until a device is picked in FreeAudio.
+    private var insistent: [DeviceDirection: String] = [:]
     /// The last default-device change per direction, to spot the microphone moving along with the output.
     private var lastChange: [DeviceDirection: DefaultChange] = [:]
     /// Default devices FreeAudio itself is switching to; their change notifications aren't someone else's.
@@ -196,6 +202,10 @@ final class AudioController: ObservableObject {
     func previewBlocked(_ direction: DeviceDirection, _ device: AudioDevice) {
         blockedDevices[direction] = device
     }
+
+    func previewYielded(_ direction: DeviceDirection, _ device: AudioDevice, chosen: AudioDevice) {
+        yieldedDevices[direction] = YieldedDevice(device: device, chosen: chosen)
+    }
     #endif
 
     func deviceName(uid: String) -> String {
@@ -207,6 +217,7 @@ final class AudioController: ObservableObject {
     /// Picking a device in FreeAudio makes it the chosen one.
     func select(_ device: AudioDevice, _ direction: DeviceDirection) {
         Log.info("device", "使用者選擇 \(describe(device, direction))")
+        endYield(direction)
         choose(device, direction)
         setDefault(device.id, direction)
         refreshDevices()
@@ -352,6 +363,11 @@ final class AudioController: ObservableObject {
         for direction in [DeviceDirection.output, .input] where missingDevices[direction] == nil {
             releaseSilenced(direction)
         }
+        // Once the device macOS kept switching to is gone (AirPods out of both ears), the chosen one plays again.
+        for (direction, yielded) in yieldedDevices where !(direction == .output ? outputs : inputs).contains(where: { $0.uid == yielded.device.uid }) {
+            Log.info("lock", "\(yielded.device.name) 已中斷，改回 \(yielded.chosen.name)")
+            yieldedDevices[direction] = nil
+        }
         // A blocked device that's been disconnected needs no notice any more.
         for (direction, device) in blockedDevices where !(direction == .output ? outputs : inputs).contains(where: { $0.uid == device.uid }) {
             blockedDevices[direction] = nil
@@ -384,6 +400,7 @@ final class AudioController: ObservableObject {
             for direction in [DeviceDirection.output, .input] {
                 missingDevices[direction] = nil
                 releaseSilenced(direction)
+                endYield(direction)
             }
             dismissWarning()
             if !state.remembersSound { state.preferredDevices.removeAll() }
@@ -408,12 +425,17 @@ final class AudioController: ObservableObject {
         switch decision {
         case .keep:
             restoreOnLaunch.remove(direction)
+            // Only the notice: a switch-back that took is part of a fight when the other side switches away again.
+            if yieldedDevices[direction] != nil { yieldedDevices[direction] = nil }
         case .switchBack(let id):
+            // Stopped switching back from the device macOS keeps switching to.
+            if let current, yieldedDevices[direction]?.device.uid == current.uid { return }
             // Going back after launch or a reconnect is expected; a switch made elsewhere is reported.
             if !restoreOnLaunch.contains(direction), !wasMissing, let current { blockedDevices[direction] = current }
             restoreOnLaunch.remove(direction)
             switchBack(direction, to: id)
         case .missing:
+            if yieldedDevices[direction] != nil { yieldedDevices[direction] = nil }
             if missingDevices[direction] == nil {
                 Log.warn("lock", "找不到鎖定的\(direction == .output ? "輸出" : "輸入") \(state.deviceNames[chosenUID] ?? chosenUID)，"
                     + "\(current.map { "\($0.name) 暫代並保持靜音" } ?? "沒有暫代的裝置")")
@@ -505,13 +527,43 @@ final class AudioController: ObservableObject {
             }
             return
         }
-        lastSwitchBack[direction] = Date()
+        let now = Date()
         let devices = direction == .output ? outputDevices : inputDevices
         guard let device = devices.first(where: { $0.id == id }) else { return }
         let current = devices.first { $0.id == (direction == .output ? outputDeviceID : inputDeviceID) }
+        if let current {
+            if insistent[direction] == current.uid {
+                Log.info("lock", "系統又切到 \(current.name)，之前換回都被切走，這次不換回")
+                yield(direction, to: current, instead: device)
+                return
+            }
+            let fight = DeviceLock.fight(after: fights[direction], awayUID: current.uid, now: now)
+            fights[direction] = fight
+            if DeviceLock.givesUp(fight) {
+                Log.warn("lock", "換回 \(device.name) 後又被切到 \(current.name)，已連續 \(fight.switchBacks - 1) 次；停止換回，"
+                    + "之後系統再切到它也不換回，直到在 FreeAudio 選擇裝置")
+                insistent[direction] = current.uid
+                yield(direction, to: current, instead: device)
+                return
+            }
+        }
+        lastSwitchBack[direction] = now
         Log.info("lock", "預設\(direction == .output ? "輸出" : "輸入")被換成 \(current?.name ?? "無")，換回鎖定的 \(device.name)")
         setDefault(id, direction)
         keepMutedAfterSwitchBack(device, direction)
+    }
+
+    private func yield(_ direction: DeviceDirection, to current: AudioDevice, instead chosen: AudioDevice) {
+        switchBackRetry?.cancel()
+        blockedDevices[direction] = nil
+        yieldedDevices[direction] = YieldedDevice(device: current, chosen: chosen)
+    }
+
+    /// Picking a device in FreeAudio, or turning the lock off, starts afresh.
+    private func endYield(_ direction: DeviceDirection) {
+        fights[direction] = nil
+        insistent[direction] = nil
+        if yieldedDevices[direction] != nil { yieldedDevices[direction] = nil }
     }
 
     /// Switching a device back can unmute it: a call's voice processing moving onto a microphone does. A device that
