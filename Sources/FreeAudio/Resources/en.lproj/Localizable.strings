@@ -236,6 +236,9 @@
 "settings.per_app_hint" = "Gives each app its own volume, output device and sound settings. When it's off, all sound goes straight to the devices.";
 "settings.rescan" = "Rescan";
 "settings.rescan_hint" = "If sound isn't processed as set, reads devices and apps again and rebuilds all processing.";
+"settings.logs" = "Logs";
+"settings.logs_hint" = "Records device switches and changes to volume and mute, for the last 3 days. Attach them when you report a problem.";
+"settings.logs_open" = "Open Folder";
 "update.automatic_hint" = "Checks when FreeAudio starts and every 6 hours after, and tells you when a new version is out.";
 "stats.app_playing" = "Playing";
 "stats.app_recording" = "Recording";

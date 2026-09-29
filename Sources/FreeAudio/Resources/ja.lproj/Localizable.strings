@@ -236,6 +236,9 @@
 "settings.per_app_hint" = "アプリごとに音量、出力デバイス、サウンド設定を使えるようにします。オフのときは、すべての音がそのままデバイスに送られます。";
 "settings.rescan" = "再スキャン";
 "settings.rescan_hint" = "サウンドが設定どおりに処理されないときに、デバイスとアプリを読み直し、すべての処理を作り直します。";
+"settings.logs" = "ログ";
+"settings.logs_hint" = "デバイスの切り替えや音量・消音の変化を直近 3 日分記録します。問題を報告するときに添付できます。";
+"settings.logs_open" = "フォルダを開く";
 "update.automatic_hint" = "起動時とその後 6 時間ごとに確認し、新しいバージョンがあればお知らせします。";
 "stats.app_playing" = "再生";
 "stats.app_recording" = "録音";

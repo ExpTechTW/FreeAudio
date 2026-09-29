@@ -92,6 +92,10 @@ final class AudioController: ObservableObject {
     private static let restoreWindow: TimeInterval = 120
     /// When the panel last set each level, keyed like `levels`.
     private var lastVolumeWrite: [String: Date] = [:]
+    /// When FreeAudio itself last changed each level, keyed like `levels`: a change seen soon after is its own.
+    private var ownWrites: [String: Date] = [:]
+    /// Apps recording right now, by name, to tell in the log when a call starts or ends.
+    private var recordingApps: Set<String> = []
     private var observers: [NSObjectProtocol] = []
     private var timer: Timer?
     private var saveTask: Task<Void, Never>?
@@ -108,15 +112,21 @@ final class AudioController: ObservableObject {
         self.engineEnabled = engineEnabled
         self.showsWarnings = showsWarnings
         state = PersistedState.load()
-        // Previews and tests keep their numbers in memory.
-        history = engineEnabled
-            ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-                .flatMap { HistoryStore(file: $0.appendingPathComponent("FreeAudio/history.sqlite")) }
-            : nil
+        // Previews and tests keep their numbers in memory and write no log.
+        let support = engineEnabled ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first : nil
+        if let support {
+            Log.start(folder: support.appendingPathComponent("FreeAudio/logs"))
+            Log.info("app", "啟動 FreeAudio \(BuildInfo.current.label)（\(ProcessInfo.processInfo.operatingSystemVersionString)）")
+        }
+        history = support.flatMap { HistoryStore(file: $0.appendingPathComponent("FreeAudio/history.sqlite")) }
         usage = UsageStats(store: history)
         hearing = HearingMonitor(store: history)
         permission = AudioCapturePermission.status
         lastPermissionCheck = Date()
+        if engineEnabled {
+            Log.info("app", "設定：鎖定裝置 \(state.locksDevices)、記住聲音 \(state.remembersSound)、麥克風跟著輸出 \(state.inputFollowsOutput)、"
+                + "新裝置靜音 \(state.newDevicesSilent)；在 FreeAudio 靜音的麥克風 \(state.mutedMicrophones ?? [])、音量被壓到 0% 的 \(state.parkedMicrophones)")
+        }
         // Previews and tests (engine off) must not touch the user's devices.
         if engineEnabled {
             if state.locksDevices, !state.lockSeeded {
@@ -192,6 +202,7 @@ final class AudioController: ObservableObject {
 
     /// Picking a device in FreeAudio makes it the chosen one.
     func select(_ device: AudioDevice, _ direction: DeviceDirection) {
+        Log.info("device", "使用者選擇 \(describe(device, direction))")
         choose(device, direction)
         setDefault(device.id, direction)
         refreshDevices()
@@ -223,41 +234,69 @@ final class AudioController: ObservableObject {
         let shown = level(of: device, direction)
         // A slider can report its current value again, e.g. when it appears; that isn't a change.
         guard abs(volume - shown.volume) > 0.0005 else { return }
+        // A drag is one line: its first step.
+        if Date().timeIntervalSince(lastVolumeWrite[key] ?? .distantPast) > 1 {
+            Log.info("level", "介面把 \(describe(device, direction)) 的音量從 \(percent(shown.volume)) 調成 \(percent(volume))")
+        }
         levels[key]?.volume = volume
         lastVolumeWrite[key] = Date()
         if usesSoftwareLevel(device, direction) {
             updateDeviceSettings(for: device) { $0.volume = volume }
         } else {
-            AudioDevices.setVolume(volume, device, direction)
+            writeVolume(volume, device, direction, nil)
         }
         // Like the system controls, moving the slider un-mutes, at the level it was moved to.
         if volume > 0, shown.muted {
             softMuteVolumes[device.uid] = nil
             if direction == .input { state.parkedMicrophones[device.uid] = nil }
-            setMuted(false, device, direction)
+            setMuted(false, device, direction, "拖動音量滑桿")
         }
     }
 
     func toggleMute(_ device: AudioDevice, _ direction: DeviceDirection) {
-        setMuted(!level(of: device, direction).muted, device, direction)
+        setMuted(!level(of: device, direction).muted, device, direction, "按下靜音按鈕")
     }
 
-    private func setMuted(_ muted: Bool, _ device: AudioDevice, _ direction: DeviceDirection) {
+    /// Only for what the user does; `reason` says what, for the log.
+    private func setMuted(_ muted: Bool, _ device: AudioDevice, _ direction: DeviceDirection, _ reason: String) {
         if direction == .input {
-            setMicrophoneMuted(muted, device)
+            setMicrophoneMuted(muted, device, reason)
         } else if device.canMute {
-            AudioDevices.setMuted(muted, device, direction)
+            writeMuted(muted, device, direction, reason)
         } else if usesSoftwareLevel(device, direction) {
             // No volume or mute control (e.g. HDMI): FreeAudio silences what it renders there.
+            Log.info("level", "\(describe(device, direction)) \(muted ? "靜音" : "解除靜音")（由 FreeAudio 處理）：\(reason)")
             updateDeviceSettings(for: device) { $0.muted = muted }
         } else if muted {
             // Devices without a mute control are muted by parking the volume at zero.
             softMuteVolumes[device.uid] = AudioDevices.volume(device, direction) ?? 1
-            AudioDevices.setVolume(0, device, direction)
+            writeVolume(0, device, direction, "\(reason)，沒有靜音控制，以 0% 代替")
         } else if let volume = softMuteVolumes.removeValue(forKey: device.uid) {
-            AudioDevices.setVolume(volume, device, direction)
+            writeVolume(volume, device, direction, "\(reason)，還原靜音前的音量")
         }
         refreshVolumes()
+    }
+
+    /// Every mute FreeAudio sets on a device goes through here: the log says why (nothing when `reason` is `nil`), and
+    /// the change it causes isn't taken for someone else's.
+    private func writeMuted(_ muted: Bool, _ device: AudioDevice, _ direction: DeviceDirection, _ reason: String?, level: Log.Level = .info) {
+        ownWrites[levelKey(device, direction)] = Date()
+        AudioDevices.setMuted(muted, device, direction)
+        guard let reason else { return }
+        let line = "\(describe(device, direction)) \(muted ? "靜音" : "解除靜音")：\(reason)"
+        level == .warn ? Log.warn("level", line) : Log.info("level", line)
+    }
+
+    /// Like `writeMuted`, for a volume; the panel's slider passes no reason, and logs a drag once itself.
+    private func writeVolume(_ volume: Double, _ device: AudioDevice, _ direction: DeviceDirection, _ reason: String?) {
+        ownWrites[levelKey(device, direction)] = Date()
+        AudioDevices.setVolume(volume, device, direction)
+        if let reason { Log.info("level", "\(describe(device, direction)) 音量設為 \(percent(volume))：\(reason)") }
+    }
+
+    /// "MacBook Pro Speakers (output)", for the log.
+    private func describe(_ device: AudioDevice, _ direction: DeviceDirection) -> String {
+        "\(device.name)（\(direction == .output ? "輸出" : "輸入")）"
     }
 
     /// An output without a volume control gets its level from FreeAudio, applied to what FreeAudio renders on it.
@@ -268,7 +307,10 @@ final class AudioController: ObservableObject {
     func refreshDevices() {
         let outputs = AudioDevices.list(.output)
         let inputs = AudioDevices.list(.input)
+        let known = outputDevices + inputDevices
         if engineEnabled {
+            logConnections(outputs, outputDevices, .output)
+            logConnections(inputs, inputDevices, .input)
             takeOverMicrophoneMutes(inputs)
             quietNewDevices(outputs: outputs, inputs: inputs)
         }
@@ -282,6 +324,10 @@ final class AudioController: ObservableObject {
             if direction == .output { outputDeviceID = current } else { inputDeviceID = current }
             let ours = switchingTo[direction] == current
             switchingTo[direction] = nil
+            if engineEnabled {
+                let name = { (id: AudioDeviceID) in (known + outputs + inputs).first { $0.id == id }?.name ?? "無" }
+                Log.info("device", "預設\(direction == .output ? "輸出" : "輸入")：\(name(previous)) → \(name(current))（\(ours ? "FreeAudio" : devicesListed ? "系統或其他 App" : "啟動時")）")
+            }
             lastChange[direction] = DefaultChange(at: Date(), from: previous, byFreeAudio: ours, handled: !devicesListed)
             if !state.locksDevices { rememberDefault(direction, previous: previous) }
         }
@@ -311,6 +357,13 @@ final class AudioController: ObservableObject {
         refreshVolumes()
         installVolumeListeners()
         reconcileRoutes()
+    }
+
+    private func logConnections(_ now: [AudioDevice], _ before: [AudioDevice], _ direction: DeviceDirection) {
+        // The first listing at launch isn't a connection.
+        guard devicesListed else { return }
+        for device in now where !before.contains(where: { $0.uid == device.uid }) { Log.info("device", "連接 \(describe(device, direction))") }
+        for device in before where !now.contains(where: { $0.uid == device.uid }) { Log.info("device", "中斷 \(describe(device, direction))") }
     }
 
     // MARK: - Device lock
@@ -343,6 +396,7 @@ final class AudioController: ObservableObject {
         let decision = DeviceLock.decide(chosenUID: chosenUID, devices: devices, currentID: currentID)
         let wasMissing = missingDevices[direction] != nil
         if decision != .missing, wasMissing {
+            Log.info("lock", "鎖定的\(direction == .output ? "輸出" : "輸入") \(state.deviceNames[chosenUID] ?? chosenUID) 回來了")
             missingDevices[direction] = nil
             dismissWarning()
         }
@@ -356,6 +410,8 @@ final class AudioController: ObservableObject {
             switchBack(direction, to: id)
         case .missing:
             if missingDevices[direction] == nil {
+                Log.warn("lock", "找不到鎖定的\(direction == .output ? "輸出" : "輸入") \(state.deviceNames[chosenUID] ?? chosenUID)，"
+                    + "\(current.map { "\($0.name) 暫代並保持靜音" } ?? "沒有暫代的裝置")")
                 missingDevices[direction] = MissingDevice(uid: chosenUID, name: state.deviceNames[chosenUID] ?? L("guard.unknown_device"))
                 scheduleWarning()
             }
@@ -375,6 +431,7 @@ final class AudioController: ObservableObject {
             guard !output.handled else { return false }
             lastChange[.output]?.handled = true
             if let device = defaultOutput, let paired = AudioDevices.pairedInput(for: device, among: inputDevices) {
+                Log.info("device", "麥克風跟著輸出換成 \(paired.name)")
                 choose(paired, .input)
                 setDefault(paired.id, .input)
             }
@@ -385,6 +442,7 @@ final class AudioController: ObservableObject {
               let previous = inputDevices.first(where: { $0.id == input.from }) else { return false }
         lastChange[.input]?.handled = true
         blockedDevices[.input] = nil
+        Log.info("device", "輸出改變時 macOS 換了麥克風，換回 \(previous.name)")
         if state.locksDevices || state.remembersSound { choose(previous, .input) }
         setDefault(previous.id, .input)
         return true
@@ -405,8 +463,8 @@ final class AudioController: ObservableObject {
         for (direction, devices) in [(DeviceDirection.output, outputs), (.input, inputs)] {
             for device in devices {
                 guard known.insert(levelKey(device, direction)).inserted, !seeding, state.newDevicesSilent else { continue }
-                if device.hasVolume { AudioDevices.setVolume(0, device, direction) }
-                if device.canMute { AudioDevices.setMuted(true, device, direction) }
+                if device.hasVolume { writeVolume(0, device, direction, "第一次連接的裝置預設 0%") }
+                if device.canMute { writeMuted(true, device, direction, "第一次連接的裝置預設靜音") }
                 // A new microphone stays muted until it's unmuted in FreeAudio.
                 if direction == .input, device.canMute || device.hasVolume {
                     state.mutedMicrophones = ((state.mutedMicrophones ?? []) + [device.uid]).sorted()
@@ -442,6 +500,10 @@ final class AudioController: ObservableObject {
             return
         }
         lastSwitchBack[direction] = Date()
+        let devices = direction == .output ? outputDevices : inputDevices
+        guard let device = devices.first(where: { $0.id == id }) else { return }
+        let current = devices.first { $0.id == (direction == .output ? outputDeviceID : inputDeviceID) }
+        Log.info("lock", "預設\(direction == .output ? "輸出" : "輸入")被換成 \(current?.name ?? "無")，換回鎖定的 \(device.name)")
         setDefault(id, direction)
     }
 
@@ -477,11 +539,12 @@ final class AudioController: ObservableObject {
         guard Date().timeIntervalSince(lastSilenced[key] ?? .distantPast) > 0.25 else { return }
         if device.canMute {
             guard !AudioDevices.isMuted(device, direction) else { return }
-            AudioDevices.setMuted(true, device, direction)
+            writeMuted(true, device, direction, "鎖定的裝置不在，暫代的裝置保持靜音")
         } else if device.hasVolume {
             guard (AudioDevices.volume(device, direction) ?? 0) > 0 else { return }
-            AudioDevices.setVolume(0, device, direction)
+            writeVolume(0, device, direction, "鎖定的裝置不在，暫代的裝置保持 0%")
         } else if direction == .output, silencers[device.uid] == nil, !ownProcesses.isEmpty {
+            Log.info("level", "\(describe(device, direction)) 沒有音量與靜音控制，以 tap 讓它保持無聲")
             // No mute or volume control (e.g. HDMI): mute everything playing to it with a tap.
             let control = StageControl()
             control.update(StageSetup(gainLeft: 0, gainRight: 0))
@@ -502,10 +565,11 @@ final class AudioController: ObservableObject {
             guard let device = devices.first(where: { $0.uid == uid }) else { continue }
             // A microphone muted in FreeAudio stays muted.
             let held = direction == .input && isHeld(device)
+            let reason = "不再暫代，還原它原本的狀態"
             if device.canMute {
-                AudioDevices.setMuted(original.muted || held, device, direction)
+                writeMuted(original.muted || held, device, direction, held ? "\(reason)（在 FreeAudio 靜音的麥克風維持靜音）" : reason)
             } else if device.hasVolume, !held {
-                AudioDevices.setVolume(original.volume, device, direction)
+                writeVolume(original.volume, device, direction, reason)
             }
             state.silencedLevels[key] = nil
             scheduleSave()
@@ -532,18 +596,18 @@ final class AudioController: ObservableObject {
     }
 
     /// Unmuting here is the only way a microphone muted in FreeAudio opens again.
-    private func setMicrophoneMuted(_ muted: Bool, _ device: AudioDevice) {
+    private func setMicrophoneMuted(_ muted: Bool, _ device: AudioDevice, _ reason: String) {
         var microphones = Set(state.mutedMicrophones ?? [])
         if muted {
             guard device.canMute || device.hasVolume else { return }
             microphones.insert(device.uid)
-            if device.canMute { AudioDevices.setMuted(true, device, .input) } else { park(device) }
+            if device.canMute { writeMuted(true, device, .input, reason) } else { park(device, "\(reason)，沒有靜音控制，以 0% 代替") }
         } else {
             microphones.remove(device.uid)
             reMutes[device.uid] = nil
-            if device.canMute { AudioDevices.setMuted(false, device, .input) }
+            if device.canMute { writeMuted(false, device, .input, reason) }
             if let volume = state.parkedMicrophones.removeValue(forKey: device.uid) {
-                AudioDevices.setVolume(volume, device, .input)
+                writeVolume(volume, device, .input, "\(reason)，還原靜音前的音量")
             }
         }
         state.mutedMicrophones = microphones.sorted()
@@ -552,12 +616,12 @@ final class AudioController: ObservableObject {
     }
 
     /// Holds a microphone's volume at zero, keeping the level to give back when it's unmuted in FreeAudio.
-    private func park(_ device: AudioDevice) {
+    private func park(_ device: AudioDevice, _ reason: String) {
         if state.parkedMicrophones[device.uid] == nil {
             state.parkedMicrophones[device.uid] = AudioDevices.volume(device, .input) ?? 1
             scheduleSave()
         }
-        if (AudioDevices.volume(device, .input) ?? 0) > 0 { AudioDevices.setVolume(0, device, .input) }
+        if (AudioDevices.volume(device, .input) ?? 0) > 0 { writeVolume(0, device, .input, reason) }
     }
 
     /// Watches every held microphone, not only the default one: an app can record from any of them.
@@ -578,7 +642,9 @@ final class AudioController: ObservableObject {
         guard engineEnabled else { return }
         let now = Date()
         for device in inputDevices where isHeld(device) {
-            if state.parkedMicrophones[device.uid] != nil { park(device) }
+            if state.parkedMicrophones[device.uid] != nil {
+                park(device, device.canMute ? "持續被解除靜音，保持 0%" : "麥克風沒有靜音控制，保持 0%")
+            }
             guard device.canMute else { continue }
             let recent = reMutes[device.uid] ?? []
             let step = MicrophoneHold.step(muted: AudioDevices.isMuted(device, .input), recentMutes: recent, now: now)
@@ -588,9 +654,13 @@ final class AudioController: ObservableObject {
             case .retry(let delay):
                 retryHold(after: delay)
             case .mute, .muteAndPark:
-                AudioDevices.setMuted(true, device, .input)
+                // While its volume is held at zero, each fight isn't worth a line.
+                let parked = state.parkedMicrophones[device.uid] != nil
+                writeMuted(true, device, .input, parked ? nil : "在 FreeAudio 靜音，卻被系統或其他 App 解除靜音，再次靜音", level: .warn)
                 reMutes[device.uid] = MicrophoneHold.recording(now, after: recent)
-                if step == .muteAndPark, device.hasVolume { park(device) }
+                if step == .muteAndPark, device.hasVolume {
+                    park(device, "3 秒內被解除靜音 \(MicrophoneHold.persistentCount) 次，把音量設為 0%")
+                }
             }
         }
     }
@@ -696,8 +766,8 @@ final class AudioController: ObservableObject {
                 guard pendingLevels.remove(key) != nil, let level = state.deviceLevels[key] else { continue }
                 // Microphone mutes are held rather than restored: FreeAudio never unmutes one by itself.
                 let parked = direction == .input && state.parkedMicrophones[device.uid] != nil
-                if device.hasVolume, !parked { AudioDevices.setVolume(level.volume, device, direction) }
-                if direction == .output, device.canMute { AudioDevices.setMuted(level.muted, device, direction) }
+                if device.hasVolume, !parked { writeVolume(level.volume, device, direction, "重新啟動後還原記住的音量") }
+                if direction == .output, device.canMute { writeMuted(level.muted, device, direction, "重新啟動後還原記住的靜音狀態") }
             }
         }
     }
@@ -780,6 +850,7 @@ final class AudioController: ObservableObject {
             let software = usesSoftwareLevel(device, direction)
             let volume = software ? deviceSettings(for: device.uid).volume : AudioDevices.volume(device, direction) ?? 1
             let muted = muteState(device, direction)
+            if engineEnabled { logOutsideChange(device, direction, volume: volume, muted: muted, now: now) }
             // A stand-in's silence is FreeAudio's doing, not a level to remember.
             if state.silencedLevels[key] == nil, device.hasVolume || device.canMute {
                 rememberLevel(device, direction, volume: volume, muted: muted)
@@ -792,6 +863,20 @@ final class AudioController: ObservableObject {
             next[key] = level
         }
         if next != levels { levels = next }
+    }
+
+    /// A level change on a shown device that neither FreeAudio nor its panel made: the keyboard, Control Center,
+    /// another app, or macOS.
+    private func logOutsideChange(_ device: AudioDevice, _ direction: DeviceDirection, volume: Double, muted: Bool, now: Date) {
+        let key = levelKey(device, direction)
+        guard let shown = levels[key],
+              now.timeIntervalSince(ownWrites[key] ?? .distantPast) > 1,
+              now.timeIntervalSince(lastVolumeWrite[key] ?? .distantPast) > 1 else { return }
+        if shown.muted != muted {
+            Log.info("level", "\(describe(device, direction)) 被系統或其他 App \(muted ? "靜音" : "解除靜音")")
+        } else if abs(shown.volume - volume) >= 0.01 {
+            Log.info("level", "\(describe(device, direction)) 的音量被系統或其他 App 從 \(percent(shown.volume)) 調成 \(percent(volume))")
+        }
     }
 
     private func muteState(_ device: AudioDevice, _ direction: DeviceDirection) -> Bool {
@@ -936,6 +1021,13 @@ final class AudioController: ObservableObject {
         for app in snapshot.apps where app.isPlaying || playingApps.contains(app.id) { lastPlayed[app.id] = now }
         playingApps = Set(snapshot.apps.filter(\.isPlaying).map(\.id))
         if snapshot.apps != runningApps { runningApps = snapshot.apps }
+        // A call starting or ending is when macOS moves and unmutes microphones.
+        let recording = Set(snapshot.apps.filter { $0.processes.contains { snapshot.recording[$0] != nil } }.map(\.name))
+        if engineEnabled, recording != recordingApps {
+            for name in recording.subtracting(recordingApps).sorted() { Log.info("app", "\(name) 開始錄音") }
+            for name in recordingApps.subtracting(recording).sorted() { Log.info("app", "\(name) 停止錄音") }
+        }
+        recordingApps = recording
         let running = Set(snapshot.apps.map(\.id))
         lastPlayed = lastPlayed.filter { running.contains($0.key) }
         usedDevices = usedDevices.filter { running.contains($0.key) }
@@ -1075,6 +1167,7 @@ final class AudioController: ObservableObject {
 
     /// Re-reads devices, apps and permission, and rebuilds every route.
     func rescan() {
+        Log.info("app", "重新掃描裝置與 App")
         routes.values.forEach { $0.stop() }
         routes.removeAll()
         lingering.removeAll()
@@ -1087,6 +1180,7 @@ final class AudioController: ObservableObject {
     }
 
     private func rescanAfterWake() {
+        Log.info("app", "從睡眠喚醒")
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(2))
             self?.rescan()
@@ -1094,6 +1188,7 @@ final class AudioController: ObservableObject {
     }
 
     func shutdown() {
+        Log.info("app", "結束")
         saveTask?.cancel()
         state.save()
         usage.save()
@@ -1102,6 +1197,7 @@ final class AudioController: ObservableObject {
         timer?.invalidate()
         routes.values.forEach { $0.stop() }
         routes.removeAll()
+        Log.flush()
     }
 
     private func tick() {
@@ -1273,7 +1369,10 @@ final class AudioController: ObservableObject {
             if case .app = spec.key.source { return spec.mute == .muted }
             return false
         }.flatMap(\.processes))
-        if let failure, failure != lastError { lastError = failure } else if failure == nil, retryAfter.isEmpty, lastError != nil { lastError = nil }
+        if let failure, failure != lastError {
+            Log.error("route", failure)
+            lastError = failure
+        } else if failure == nil, retryAfter.isEmpty, lastError != nil { lastError = nil }
         updateSampleRateListeners()
     }
 

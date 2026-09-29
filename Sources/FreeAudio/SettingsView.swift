@@ -61,6 +61,13 @@ struct GeneralPage: View {
                     Text(L("settings.rescan"))
                     Text(L("settings.rescan_hint"))
                 }
+                LabeledContent {
+                    Button(L("settings.logs_open")) { openLogs() }
+                        .disabled(Log.folder == nil)
+                } label: {
+                    Text(L("settings.logs"))
+                    Text(L("settings.logs_hint"))
+                }
             }
         }
         .onAppear(perform: refreshLoginState)
@@ -72,6 +79,12 @@ struct GeneralPage: View {
         case .denied: L("permission.denied")
         case .notDetermined, .unknown: L("permission.request_hint")
         }
+    }
+
+    private func openLogs() {
+        guard let folder = Log.folder else { return }
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(folder)
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {

@@ -236,6 +236,9 @@
 "settings.per_app_hint" = "讓每個 App 有自己的音量、輸出裝置與聲音設定。關閉時所有聲音都直接送到裝置。";
 "settings.rescan" = "重新掃描";
 "settings.rescan_hint" = "聲音沒有照設定處理時，重新讀取裝置與 App，並重建所有處理。";
+"settings.logs" = "日誌";
+"settings.logs_hint" = "記錄裝置切換、音量與靜音的變化，保留最近 3 天；回報問題時可以附上。";
+"settings.logs_open" = "打開資料夾";
 "update.automatic_hint" = "啟動時與之後每 6 小時檢查一次，有新版本時通知你。";
 "stats.app_playing" = "播放";
 "stats.app_recording" = "錄音";
