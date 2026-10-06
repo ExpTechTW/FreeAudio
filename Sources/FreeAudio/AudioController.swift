@@ -272,6 +272,28 @@ final class AudioController: ObservableObject {
         setMuted(!level(of: device, direction).muted, device, direction, "按下靜音按鈕")
     }
 
+    /// What a keyboard shortcut does to the default microphone: mutes it, unmutes it, or switches between the two, as
+    /// the panel's button does. Returns the microphone and whether it's muted now; `nil` when there's none to use.
+    @discardableResult
+    func applyShortcut(_ action: ShortcutAction) -> (device: AudioDevice, muted: Bool)? {
+        guard let device = defaultInput, missingDevices[.input] == nil else {
+            Log.info("shortcut", "按下「\(action.logName)」，但沒有可用的麥克風")
+            return nil
+        }
+        let muted = level(of: device, .input).muted
+        let wanted = switch action {
+        case .toggleMicrophone: !muted
+        case .muteMicrophone: true
+        case .unmuteMicrophone: false
+        }
+        if wanted != muted {
+            setMuted(wanted, device, .input, "快捷鍵「\(action.logName)」")
+        } else {
+            Log.info("shortcut", "按下「\(action.logName)」，\(device.name) 已經\(muted ? "靜音" : "開啟")")
+        }
+        return (device, level(of: device, .input).muted)
+    }
+
     /// Only for what the user does; `reason` says what, for the log.
     private func setMuted(_ muted: Bool, _ device: AudioDevice, _ direction: DeviceDirection, _ reason: String) {
         mutedAtSwitchBack[levelKey(device, direction)] = nil

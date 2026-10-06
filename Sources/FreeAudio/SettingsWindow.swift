@@ -3,10 +3,10 @@ import Combine
 import SwiftUI
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case general, devices, apps, statistics, hearing, updates, about
+    case general, devices, apps, shortcuts, statistics, hearing, updates, about
 
     /// The sidebar's groups: how FreeAudio behaves, what it has seen, and FreeAudio itself.
-    static let groups: [[SettingsPage]] = [[.general, .devices, .apps], [.statistics, .hearing], [.updates, .about]]
+    static let groups: [[SettingsPage]] = [[.general, .devices, .apps, .shortcuts], [.statistics, .hearing], [.updates, .about]]
 
     var id: Self { self }
     var title: String { L("settings.page.\(rawValue)") }
@@ -17,6 +17,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general: "gearshape.fill"
         case .devices: "hifispeaker.2.fill"
         case .apps: "square.grid.2x2.fill"
+        case .shortcuts: "command"
         case .statistics: "chart.bar.fill"
         case .hearing: "ear.fill"
         case .updates: "arrow.down.circle.fill"
@@ -29,6 +30,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general, .about: .gray
         case .devices: .blue
         case .apps: .purple
+        case .shortcuts: .teal
         case .statistics: .orange
         case .hearing: .pink
         case .updates: .indigo
@@ -57,12 +59,12 @@ final class SettingsWindow {
     private var window: NSWindow?
     private var closing: NSObjectProtocol?
     private var titleUpdates: AnyCancellable?
-    private var models: (audio: AudioController, language: LanguageSettings, updater: Updater)?
+    private var models: (audio: AudioController, language: LanguageSettings, updater: Updater, shortcuts: Shortcuts)?
     private let navigation = SettingsNavigation()
 
     /// Hands over what the window shows; done once at launch.
-    func configure(audio: AudioController, language: LanguageSettings, updater: Updater) {
-        models = (audio, language, updater)
+    func configure(audio: AudioController, language: LanguageSettings, updater: Updater, shortcuts: Shortcuts) {
+        models = (audio, language, updater, shortcuts)
     }
 
     func show(page: SettingsPage? = nil) {
@@ -77,11 +79,12 @@ final class SettingsWindow {
         window.orderFrontRegardless()
     }
 
-    private func makeWindow(_ models: (audio: AudioController, language: LanguageSettings, updater: Updater)) -> NSWindow {
+    private func makeWindow(_ models: (audio: AudioController, language: LanguageSettings, updater: Updater, shortcuts: Shortcuts)) -> NSWindow {
         let root = SettingsRoot(audio: models.audio, language: models.language, navigation: navigation)
             .environmentObject(models.updater)
             .environmentObject(models.audio.usage)
             .environmentObject(models.audio.hearing)
+            .environmentObject(models.shortcuts)
         let controller = NSHostingController(rootView: root)
         controller.sizingOptions = []
         let window = NSWindow(contentViewController: controller)
@@ -140,6 +143,7 @@ private struct SettingsRoot: View {
                 case .general: GeneralPage()
                 case .devices: DevicesPage()
                 case .apps: AppsPage()
+                case .shortcuts: ShortcutsPage()
                 case .statistics: StatisticsPage()
                 case .hearing: HearingPage()
                 case .updates: UpdatesPage()

@@ -228,6 +228,8 @@
 "settings.page.devices_subtitle" = "デバイスの切り替えと、新しく接続したデバイスの扱いを設定します。";
 "settings.page.apps" = "アプリ";
 "settings.page.apps_subtitle" = "アプリごとのサウンドと、FreeAudio が記憶しているアプリの設定。";
+"settings.page.shortcuts" = "ショートカット";
+"settings.page.shortcuts_subtitle" = "どのアプリを使っていても、キーボードでマイクを操作できます。";
 "settings.startup" = "起動";
 "settings.launch_at_login_hint" = "Mac にログインしたときに FreeAudio を開きます。";
 "settings.switching" = "デバイスの切り替え";
@@ -328,3 +330,28 @@
 "hearing.distribution" = "音量の分布";
 "hearing.distribution_readout" = "%1$d dB：%2$@";
 "hearing.distribution_hint" = "音量ごとの時間です。オレンジは %d dB 以上です。";
+
+"shortcuts.microphone" = "マイク";
+"shortcut.toggleMicrophone" = "消音の切り替え";
+"shortcut.toggleMicrophone_hint" = "消音中なら解除し、オンなら消音します。";
+"shortcut.muteMicrophone" = "消音";
+"shortcut.muteMicrophone_hint" = "常にマイクを消音します。消音中ならそのままです。";
+"shortcut.unmuteMicrophone" = "消音を解除";
+"shortcut.unmuteMicrophone_hint" = "常にマイクをオンにします。オンならそのままです。";
+"shortcuts.footer" = "使用中のマイクを操作します。ショートカットには ⌘・⌥・⌃ のいずれかが必要です（F1〜F20 は単独で使えます）。欄をクリックしてキーを押すと設定され、Esc で取り消し、Delete で消去します。";
+"shortcuts.unavailable" = "このキーはシステムかほかのアプリが使用しています。別のキーを選んでください。";
+"shortcuts.none" = "なし";
+"shortcuts.press_keys" = "キーを押してください…";
+"shortcuts.record_help" = "クリックしてから使うキーを押します";
+"shortcuts.recording_help" = "Esc で取り消し、Delete で消去";
+"shortcuts.needs_modifier" = "⌘・⌥・⌃ のいずれかが必要です";
+"shortcuts.in_use" = "「%@」に使用中";
+"shortcuts.clear" = "ショートカットを消去";
+"shortcuts.clear_a11y" = "「%@」のショートカットを消去";
+"shortcuts.a11y" = "%1$@：%2$@";
+"shortcuts.osd" = "状態を表示";
+"shortcuts.osd_hint" = "ショートカットを押すと、マイクの状態を画面の右上に短く表示します。";
+"shortcuts.osd_sample_device" = "MacBook Pro のマイク";
+"osd.mic_muted" = "マイクを消音しました";
+"osd.mic_on" = "マイクをオンにしました";
+"osd.no_mic" = "使えるマイクがありません";

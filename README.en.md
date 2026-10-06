@@ -61,6 +61,7 @@ The screenshots show the Traditional Chinese interface.
 | **Keep Chosen Devices** | Only the speaker and microphone chosen in FreeAudio are used. When macOS switches to headphones as they connect, or you switch in Control Center, FreeAudio switches back. If the chosen device is missing, whatever macOS picked instead is muted and you're told, rather than moving to another device |
 | **Quiet new devices** | A speaker or microphone connected for the first time starts at 0% and muted, so nothing plays or listens by surprise |
 | **Microphones stay muted** | A microphone muted in FreeAudio only opens again when you unmute it in FreeAudio. When macOS unmutes it by itself, for Siri or when a call changes devices, FreeAudio mutes it again at once. The menu bar icon is a red slashed microphone while the microphone is muted or unavailable |
+| **Microphone shortcuts** | Your own keyboard shortcuts to toggle, mute or unmute the microphone from any app, with its new state shown in the top-right corner of the screen |
 | **Remembers your sound** | Devices, volume and mute are remembered and come back after a restart |
 | **Automatic updates** | Updates come from GitHub, notarized by Apple, and FreeAudio only installs builds signed by its own developer. You can choose to get pre-releases |
 | **Three languages** | 繁體中文, English and 日本語, following the system unless you choose one in Settings |

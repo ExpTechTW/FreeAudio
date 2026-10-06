@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let language = LanguageSettings()
     let updater = Updater()
     private(set) lazy var audio = AudioController(engineEnabled: Self.audioEnabled)
+    private(set) lazy var shortcuts = Shortcuts(registers: Self.audioEnabled)
 
     #if DEBUG
     /// `defaults write <bundle id> DebugNoAudio -bool true` runs a copy that leaves devices and apps alone, e.g. to
@@ -34,8 +35,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Menu bar only, also when started without the app bundle (e.g. `swift run`).
         NSApp.setActivationPolicy(.accessory)
-        SettingsWindow.shared.configure(audio: audio, language: language, updater: updater)
+        SettingsWindow.shared.configure(audio: audio, language: language, updater: updater, shortcuts: shortcuts)
+        shortcuts.perform = { [weak self] action in self?.runShortcut(action) }
         updater.start()
+    }
+
+    private func runShortcut(_ action: ShortcutAction) {
+        let result = audio.applyShortcut(action)
+        guard shortcuts.settings.showsOSD else { return }
+        if let result {
+            OSD.shared.show(
+                symbol: result.muted ? "mic.slash.fill" : "mic.fill", tint: result.muted ? .red : .green,
+                title: L(result.muted ? "osd.mic_muted" : "osd.mic_on"), detail: result.device.name
+            )
+        } else {
+            OSD.shared.show(symbol: "mic.slash", tint: .secondary, title: L("osd.no_mic"), detail: nil)
+        }
     }
 
     /// Opening FreeAudio again (Finder, Spotlight, Launchpad) shows Settings; that also helps when the

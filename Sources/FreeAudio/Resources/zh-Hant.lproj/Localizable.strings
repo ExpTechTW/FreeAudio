@@ -228,6 +228,8 @@
 "settings.page.devices_subtitle" = "選擇 FreeAudio 怎麼處理裝置的切換與新接上的裝置。";
 "settings.page.apps" = "App";
 "settings.page.apps_subtitle" = "按應用調整聲音，以及 FreeAudio 記住的 App 設定。";
+"settings.page.shortcuts" = "快捷鍵";
+"settings.page.shortcuts_subtitle" = "在任何 App 裡都能用鍵盤控制麥克風。";
 "settings.startup" = "啟動";
 "settings.launch_at_login_hint" = "登入 Mac 時自動打開 FreeAudio。";
 "settings.switching" = "切換裝置";
@@ -328,3 +330,28 @@
 "hearing.distribution" = "音量分布";
 "hearing.distribution_readout" = "%1$d dB：%2$@";
 "hearing.distribution_hint" = "每個音量聽了多久；橘色是 %d dB 以上。";
+
+"shortcuts.microphone" = "麥克風";
+"shortcut.toggleMicrophone" = "切換靜音";
+"shortcut.toggleMicrophone_hint" = "靜音時解除，開啟時靜音。";
+"shortcut.muteMicrophone" = "靜音";
+"shortcut.muteMicrophone_hint" = "一定讓麥克風靜音，已靜音就維持。";
+"shortcut.unmuteMicrophone" = "解除靜音";
+"shortcut.unmuteMicrophone_hint" = "一定打開麥克風，已打開就維持。";
+"shortcuts.footer" = "控制目前選用的麥克風。快捷鍵要包含 ⌘、⌥ 或 ⌃，或使用 F1–F20；按欄位後按下按鍵即可設定，Esc 取消，Delete 清除。";
+"shortcuts.unavailable" = "這組按鍵已被系統或其他 App 使用，請換一組。";
+"shortcuts.none" = "未設定";
+"shortcuts.press_keys" = "請按下按鍵…";
+"shortcuts.record_help" = "點一下後按下要使用的按鍵";
+"shortcuts.recording_help" = "Esc 取消，Delete 清除";
+"shortcuts.needs_modifier" = "要包含 ⌘、⌥ 或 ⌃";
+"shortcuts.in_use" = "已用於「%@」";
+"shortcuts.clear" = "清除快捷鍵";
+"shortcuts.clear_a11y" = "清除「%@」的快捷鍵";
+"shortcuts.a11y" = "%1$@：%2$@";
+"shortcuts.osd" = "顯示狀態提示";
+"shortcuts.osd_hint" = "按下快捷鍵後，在螢幕右上角短暫顯示麥克風目前的狀態。";
+"shortcuts.osd_sample_device" = "MacBook Pro 麥克風";
+"osd.mic_muted" = "麥克風已靜音";
+"osd.mic_on" = "麥克風已開啟";
+"osd.no_mic" = "沒有可用的麥克風";
