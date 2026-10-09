@@ -31,10 +31,12 @@
 "guard.use_current" = "改用「%@」";
 "guard.use_current_devices" = "改用目前的裝置";
 "guard.unknown_device" = "所選裝置";
-"guard.blocked" = "系統切換到「%1$@」，已改回你選擇的「%2$@」。";
-"guard.yielded" = "系統一直切換到「%1$@」，為了不來回切換，FreeAudio 暫停改回「%2$@」。";
 "guard.switch_back" = "改回「%@」";
-"guard.dismiss" = "知道了";
+"guard.locked_title" = "已鎖定「%@」";
+"guard.locked_output" = "系統把輸出切換到這個裝置，FreeAudio 跟著切換，但將它靜音，不會發出聲音；你選擇的是「%@」。";
+"guard.locked_input" = "系統把麥克風切換到這個裝置，FreeAudio 跟著切換，但將它靜音，不會收音；你選擇的是「%@」。";
+"guard.unlock" = "解鎖並使用";
+"guard.unlock_use" = "解鎖並使用「%@」";
 "guard.ok" = "好";
 "guard.app_missing" = "找不到「%@」，這個 App 的聲音已停用";
 
@@ -96,7 +98,7 @@
 "settings.remember_sound_hint" = "記住輸出與輸入裝置、音量和靜音狀態，FreeAudio 啟動時自動恢復。";
 "settings.remember_sound_needs_login" = "要在重新開機後自動恢復，請同時開啟「登入時啟動」。";
 "settings.lock_devices" = "鎖定所選裝置";
-"settings.lock_devices_hint" = "只用在 FreeAudio 選的喇叭和麥克風；系統自動切換會被改回來。找不到所選裝置時停用並跳出警告，不會改用其他裝置。";
+"settings.lock_devices_hint" = "只用在 FreeAudio 選的喇叭和麥克風；系統自動切換到其他裝置時，會跟著切換但將它鎖定並靜音，解鎖後才會使用。找不到所選裝置時停用並跳出警告，不會改用其他裝置。";
 "settings.input_follows_output" = "麥克風跟著輸出裝置切換";
 "settings.input_follows_output_hint" = "選擇耳機等輸出裝置時，也改用它的麥克風。關閉時麥克風不會跟著換，系統自動換過去也會改回來。";
 "settings.new_devices_silent" = "新裝置預設 0% 並靜音";
@@ -317,6 +319,7 @@
 "hearing.reference" = "%1$@，預設 %2$d dB";
 "device.not_connected" = "未連接";
 "device.stand_in" = "暫代中，保持靜音";
+"device.locked" = "已鎖定，保持靜音";
 "hearing.dose_low" = "安全範圍內";
 "hearing.dose_near" = "接近上限";
 "hearing.dose_over" = "超過上限";
@@ -355,3 +358,4 @@
 "osd.mic_muted" = "麥克風已靜音";
 "osd.mic_on" = "麥克風已開啟";
 "osd.no_mic" = "沒有可用的麥克風";
+"osd.mic_locked" = "麥克風已鎖定";

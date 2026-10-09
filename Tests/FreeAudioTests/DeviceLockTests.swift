@@ -16,16 +16,16 @@ import Testing
         #expect(decide(chosen: speakers.uid, devices: [speakers, headphones], current: speakers.id) == .keep)
     }
 
-    @Test func connectingHeadphonesDoesNotTakeOver() {
+    @Test func connectingHeadphonesDoesNotBecomeTheChosenDevice() {
         // macOS switched to the headphones when they connected, however long after they appeared.
         #expect(decide(chosen: speakers.uid, devices: [speakers, headphones], current: headphones.id) == .switchBack(speakers.id))
     }
 
-    @Test func aNewSpeakerDoesNotTakeOver() {
+    @Test func aNewSpeakerDoesNotBecomeTheChosenDevice() {
         #expect(decide(chosen: headphones.uid, devices: [speakers, headphones, tv], current: tv.id) == .switchBack(headphones.id))
     }
 
-    @Test func aSwitchMadeElsewhereIsUndone() {
+    @Test func aSwitchMadeElsewhereKeepsTheChosenDevice() {
         // Picked in Control Center: only a choice made in FreeAudio changes the chosen device.
         #expect(decide(chosen: headphones.uid, devices: [speakers, headphones], current: speakers.id) == .switchBack(headphones.id))
     }
@@ -44,6 +44,21 @@ import Testing
 
     @Test func unknownCurrentDeviceSwitchesBack() {
         #expect(decide(chosen: speakers.uid, devices: [speakers], current: AudioDeviceID(kAudioObjectUnknown)) == .switchBack(speakers.id))
+    }
+
+    @Test func aSwitchMadeElsewhereIsFollowedButLocked() {
+        // AirPods out of their case, or a pick in Control Center: going back would only start a tug of war with macOS.
+        #expect(DeviceLock.respond(to: headphones.uid, locked: nil, restoring: false) == .lock)
+        // Still on it: it stays locked. Another device after it is locked in its place.
+        #expect(DeviceLock.respond(to: headphones.uid, locked: headphones.uid, restoring: false) == .keepLocked)
+        #expect(DeviceLock.respond(to: tv.uid, locked: headphones.uid, restoring: false) == .lock)
+    }
+
+    @Test func freeAudioStillPutsTheChosenDeviceBack() {
+        // After launch, once the chosen device is connected again, or with nothing in use.
+        #expect(DeviceLock.respond(to: headphones.uid, locked: nil, restoring: true) == .switchBack)
+        #expect(DeviceLock.respond(to: headphones.uid, locked: headphones.uid, restoring: true) == .switchBack)
+        #expect(DeviceLock.respond(to: nil, locked: nil, restoring: false) == .switchBack)
     }
 
     @Test func stopsWhenTheSystemKeepsSwitchingBack() {

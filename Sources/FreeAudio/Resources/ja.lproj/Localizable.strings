@@ -31,10 +31,12 @@
 "guard.use_current" = "「%@」を使う";
 "guard.use_current_devices" = "現在のデバイスを使う";
 "guard.unknown_device" = "選択したデバイス";
-"guard.blocked" = "システムが「%1$@」に切り替えたため、選択中の「%2$@」に戻しました。";
-"guard.yielded" = "システムが「%1$@」への切り替えを繰り返すため、行き来しないように FreeAudio は「%2$@」に戻すのをやめました。";
 "guard.switch_back" = "「%@」に戻す";
-"guard.dismiss" = "閉じる";
+"guard.locked_title" = "「%@」をロックしました";
+"guard.locked_output" = "システムが出力をこのデバイスに切り替えました。FreeAudio は切り替えに従いましたが、消音して音を出しません。選択中のデバイスは「%@」です。";
+"guard.locked_input" = "システムがマイクをこのデバイスに切り替えました。FreeAudio は切り替えに従いましたが、消音して音を拾いません。選択中のデバイスは「%@」です。";
+"guard.unlock" = "ロックを解除して使う";
+"guard.unlock_use" = "ロックを解除して「%@」を使う";
 "guard.ok" = "OK";
 "guard.app_missing" = "「%@」が見つからないため、このアプリの音を無効にしています";
 
@@ -96,7 +98,7 @@
 "settings.remember_sound_hint" = "出力・入力デバイス、音量、消音の状態を記憶し、FreeAudio の起動時に自動で復元します。";
 "settings.remember_sound_needs_login" = "再起動後に自動で復元するには、「ログイン時に起動」もオンにしてください。";
 "settings.lock_devices" = "選択したデバイスを固定";
-"settings.lock_devices_hint" = "FreeAudio で選択したスピーカーとマイクだけを使い、システムの自動切り替えは元に戻します。選択したデバイスが見つからないときは無効にして警告し、ほかのデバイスには切り替えません。";
+"settings.lock_devices_hint" = "FreeAudio で選択したスピーカーとマイクだけを使います。システムがほかのデバイスに切り替えたときは切り替えに従いますが、ロックを解除するまで消音します。選択したデバイスが見つからないときは無効にして警告し、ほかのデバイスには切り替えません。";
 "settings.input_follows_output" = "出力デバイスに合わせてマイクも切り替える";
 "settings.input_follows_output_hint" = "ヘッドフォンなどを出力に選ぶと、そのマイクも使います。オフのときはマイクは変わらず、システムが切り替えても元に戻します。";
 "settings.new_devices_silent" = "新しいデバイスは 0% で消音";
@@ -317,6 +319,7 @@
 "hearing.reference" = "%1$@、既定値 %2$d dB";
 "device.not_connected" = "未接続";
 "device.stand_in" = "代わりに使用中・消音";
+"device.locked" = "ロック中・消音";
 "hearing.dose_low" = "余裕あり";
 "hearing.dose_near" = "上限に近い";
 "hearing.dose_over" = "上限超過";
@@ -355,3 +358,4 @@
 "osd.mic_muted" = "マイクを消音しました";
 "osd.mic_on" = "マイクをオンにしました";
 "osd.no_mic" = "使えるマイクがありません";
+"osd.mic_locked" = "マイクはロック中です";

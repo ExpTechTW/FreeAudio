@@ -1,10 +1,10 @@
 import CoreAudio
 import Foundation
 
-/// A device macOS keeps switching to however often FreeAudio switches back, e.g. AirPods it routes to while they're in
-/// an ear. FreeAudio has stopped switching back, rather than flip between the two, while that device is there; it
-/// doesn't try again with it until a device is picked in FreeAudio.
-struct YieldedDevice: Equatable {
+/// A device something else switched to while devices are kept, e.g. AirPods macOS takes as they come out of their
+/// case. FreeAudio goes along with the switch rather than fight it, but keeps the device silent until the user unlocks
+/// it, which makes it the chosen device at its remembered level, or switches back to the chosen one.
+struct LockedDevice: Equatable {
     let device: AudioDevice
     let chosen: AudioDevice
 }
@@ -19,18 +19,36 @@ struct MissingDevice: Equatable {
 enum DeviceLockDecision: Equatable {
     /// The chosen device is in use.
     case keep
-    /// Another device took over; go back to the chosen one.
+    /// Another device is in use while the chosen one, this one, is connected; `DeviceLock.respond` says what to do.
     case switchBack(AudioDeviceID)
     /// The chosen device isn't connected.
     case missing
 }
 
 enum DeviceLock {
-    /// Only the chosen device, matched by UID, is used. Any switch made elsewhere, e.g. by macOS when headphones
-    /// connect, or in Control Center, is undone; the chosen device only changes when it's picked in FreeAudio.
+    /// Only the chosen device, matched by UID, is used. A switch made elsewhere, e.g. by macOS when headphones connect,
+    /// or in Control Center, doesn't change it; the chosen device only changes when it's picked in FreeAudio.
     static func decide(chosenUID: String, devices: [AudioDevice], currentID: AudioDeviceID) -> DeviceLockDecision {
         guard let chosen = devices.first(where: { $0.uid == chosenUID }) else { return .missing }
         return currentID == chosen.id ? .keep : .switchBack(chosen.id)
+    }
+
+    enum Response: Equatable {
+        /// FreeAudio puts the chosen device back.
+        case switchBack
+        /// Go along with the switch, keeping the device silent until it's unlocked (`LockedDevice`).
+        case lock
+        /// It's locked already: keep it silent.
+        case keepLocked
+    }
+
+    /// What to do about another device in use while the chosen one is connected. FreeAudio's own putting back of the
+    /// chosen device after launch, or once it's connected again (`restoring`), goes ahead, as it does when nothing is in
+    /// use; any other switch, e.g. macOS taking AirPods out of their case or a pick in Control Center, is followed and
+    /// locked rather than undone, which macOS would only undo again.
+    static func respond(to currentUID: String?, locked lockedUID: String?, restoring: Bool) -> Response {
+        guard let currentUID, !restoring else { return .switchBack }
+        return currentUID == lockedUID ? .keepLocked : .lock
     }
 
     /// Switching back sooner than this means something keeps switching away; wait rather than fight it.

@@ -48,6 +48,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 symbol: result.muted ? "mic.slash.fill" : "mic.fill", tint: result.muted ? .red : .green,
                 title: L(result.muted ? "osd.mic_muted" : "osd.mic_on"), detail: result.device.name
             )
+        } else if let locked = audio.lockedDevices[.input] {
+            OSD.shared.show(symbol: "lock.fill", tint: .orange, title: L("osd.mic_locked"), detail: locked.device.name)
         } else {
             OSD.shared.show(symbol: "mic.slash", tint: .secondary, title: L("osd.no_mic"), detail: nil)
         }

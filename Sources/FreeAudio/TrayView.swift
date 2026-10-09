@@ -195,11 +195,13 @@ private struct LevelRow<Accessory: View>: View {
 
     var body: some View {
         let level = audio.level(of: device, direction)
-        // Standing in for the missing chosen device: kept silent, and says so in place of what's applied to it.
+        // Standing in for the missing chosen device, or locked: kept silent, and says so in place of what's applied to it.
         let disabled = isDefault && audio.isDisabled(direction)
+        let locked = disabled && audio.lockedDevices[direction] != nil
         let summary = disabled
-            ? L("device.stand_in")
+            ? L(locked ? "device.locked" : "device.stand_in")
             : caption ?? (direction == .output ? audio.deviceSettings(for: device.uid).summary : nil)
+        let use = LF(locked ? "guard.unlock_use" : "guard.use_current", device.name)
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 let label = HStack(spacing: 8) {
@@ -208,14 +210,15 @@ private struct LevelRow<Accessory: View>: View {
                     Spacer(minLength: 0)
                 }
                 .contentShape(Rectangle())
-                // A stand-in is picked by clicking it, like the devices listed under it; its › still opens its page.
+                // A stand-in is picked, and a locked device unlocked, by clicking it, like the devices listed under it; its ›
+                // still opens its page.
                 let action: (() -> Void)? = disabled ? { audio.useCurrentDevice(direction) } : open
                 // Only a row that does something is a button; a disabled one would look unavailable.
                 if let action {
                     Button(action: action) { label }
                         .buttonStyle(.plain)
-                        .help(disabled ? LF("guard.use_current", device.name) : device.name)
-                        .accessibilityLabel(disabled ? LF("guard.use_current", device.name) : device.name)
+                        .help(disabled ? use : device.name)
+                        .accessibilityLabel(disabled ? use : device.name)
                 } else {
                     label.help(device.name)
                 }
@@ -299,8 +302,7 @@ private struct ChoiceRow: View {
     }
 }
 
-/// While the chosen device is missing that direction is off; after something else switched devices, FreeAudio
-/// switched back.
+/// While the chosen device is missing that direction is off; a device something else switched to is locked.
 private struct DeviceNotices: View {
     @EnvironmentObject private var audio: AudioController
     let direction: DeviceDirection
@@ -318,24 +320,20 @@ private struct DeviceNotices: View {
                     Button(LF("guard.use_current", selected.name)) { audio.useCurrentDevice(direction) }
                 }
             }
-        } else if let yielded = audio.yieldedDevices[direction] {
-            Notice(symbol: "arrow.left.arrow.right", tint: .orange, text: LF("guard.yielded", yielded.device.name, yielded.chosen.name)) {
-                let back = Button(LF("guard.switch_back", yielded.chosen.name)) { audio.select(yielded.chosen, direction) }
-                let use = Button(LF("guard.use_current", yielded.device.name)) { audio.select(yielded.device, direction) }
+        } else if let locked = audio.lockedDevices[direction] {
+            Notice(
+                symbol: "lock.fill",
+                tint: .orange,
+                title: LF("guard.locked_title", locked.device.name),
+                text: LF(direction == .output ? "guard.locked_output" : "guard.locked_input", locked.chosen.name)
+            ) {
+                // The title names the locked device already.
+                let unlock = Button(L("guard.unlock")) { audio.useCurrentDevice(direction) }
+                let back = Button(LF("guard.switch_back", locked.chosen.name)) { audio.select(locked.chosen, direction) }
                 // Both carry a device's name: side by side when they fit.
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) { back; use }
-                    VStack(alignment: .leading, spacing: 6) { back; use }
-                }
-            }
-        } else if let blocked = audio.blockedDevices[direction], let selected {
-            Notice(symbol: "lock.fill", tint: .accentColor, text: LF("guard.blocked", blocked.name, selected.name)) {
-                HStack(spacing: 8) {
-                    Button(LF("guard.use_current", blocked.name)) {
-                        let devices = direction == .output ? audio.outputDevices : audio.inputDevices
-                        if let device = devices.first(where: { $0.uid == blocked.uid }) { audio.select(device, direction) }
-                    }
-                    Button(L("guard.dismiss")) { audio.dismissBlocked(direction) }
+                    HStack(spacing: 8) { unlock; back }
+                    VStack(alignment: .leading, spacing: 6) { unlock; back }
                 }
             }
         }

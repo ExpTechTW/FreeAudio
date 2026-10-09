@@ -31,10 +31,12 @@
 "guard.use_current" = "Use “%@”";
 "guard.use_current_devices" = "Use Current Devices";
 "guard.unknown_device" = "Chosen Device";
-"guard.blocked" = "The system switched to “%1$@”, so FreeAudio switched back to your chosen “%2$@”.";
-"guard.yielded" = "The system keeps switching to “%1$@”, so FreeAudio has stopped switching back to “%2$@” rather than flip between them.";
 "guard.switch_back" = "Switch Back to “%@”";
-"guard.dismiss" = "Dismiss";
+"guard.locked_title" = "“%@” Is Locked";
+"guard.locked_output" = "The system switched the output to this device. FreeAudio went along but keeps it muted, so nothing plays; your choice is “%@”.";
+"guard.locked_input" = "The system switched the microphone to this device. FreeAudio went along but keeps it muted, so nothing is heard; your choice is “%@”.";
+"guard.unlock" = "Unlock and Use";
+"guard.unlock_use" = "Unlock and Use “%@”";
 "guard.ok" = "OK";
 "guard.app_missing" = "“%@” isn’t connected, so this app’s sound is off";
 
@@ -96,7 +98,7 @@
 "settings.remember_sound_hint" = "Remembers the output and input devices, volume and mute, and restores them when FreeAudio starts.";
 "settings.remember_sound_needs_login" = "To restore them after a restart, also turn on Open at Login.";
 "settings.lock_devices" = "Keep Chosen Devices";
-"settings.lock_devices_hint" = "Uses only the speaker and microphone chosen in FreeAudio and undoes automatic switches. If a chosen device goes missing, FreeAudio turns it off and warns you instead of switching to another device.";
+"settings.lock_devices_hint" = "Uses only the speaker and microphone chosen in FreeAudio. When the system switches to another device, FreeAudio goes along but locks it, muted, until you unlock it. If a chosen device goes missing, FreeAudio turns it off and warns you instead of switching to another device.";
 "settings.input_follows_output" = "Switch Microphone with Output";
 "settings.input_follows_output_hint" = "Choosing headphones or another output also uses its microphone. When off, the microphone stays put, even if the system switches it.";
 "settings.new_devices_silent" = "Start New Devices Muted at 0%";
@@ -317,6 +319,7 @@
 "hearing.reference" = "%1$@, default %2$d dB";
 "device.not_connected" = "Not connected";
 "device.stand_in" = "Standing in, kept silent";
+"device.locked" = "Locked, kept silent";
 "hearing.dose_low" = "Well within";
 "hearing.dose_near" = "Getting close";
 "hearing.dose_over" = "Over the limit";
@@ -355,3 +358,4 @@
 "osd.mic_muted" = "Microphone Muted";
 "osd.mic_on" = "Microphone On";
 "osd.no_mic" = "No Microphone to Use";
+"osd.mic_locked" = "Microphone Locked";
